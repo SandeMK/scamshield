@@ -13,5 +13,7 @@ jobs:
         run: cd ml && python -m pytest tests/ -v
       - name: Run API integration tests
         run: cd api && python -m pytest tests/ -v
+      - name: Run ingestion tests
+        run: pip install -r ingestion/requirements.txt && cd ingestion && python -m pytest tests/ -v
       - name: Train and evaluate model (F1 gate >= 0.85)
         run: cd ml && python train.py

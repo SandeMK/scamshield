@@ -60,13 +60,66 @@ def hash_indicator(value: str) -> str:
 
 
 class ThreatIntelClient:
-    """Stub client. Component 3 replaces lookup() with a Supabase query."""
+    """Fallback stub used when Supabase env vars are absent (offline dev)."""
 
     def lookup(self, url: str) -> Optional[dict]:
-        return None  # no DB yet
+        return None
 
     def record_report(self, report: dict) -> None:
         log.info("REPORT %s", report)
+
+
+class SupabaseThreatIntelClient(ThreatIntelClient):
+    """Live client for the shared threat-intelligence DB (Component 3).
+
+    Checks the full URL hash first (strong evidence), then the domain hash
+    (weaker evidence). Requires SUPABASE_URL + SUPABASE_SERVICE_KEY.
+    """
+
+    def __init__(self, base_url: str, key: str):
+        import httpx
+        self._rest = f"{base_url.rstrip('/')}/rest/v1"
+        self._client = httpx.Client(
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=1.5,  # keep total response well under the 2 s budget
+        )
+
+    def _query(self, indicator_hash: str, indicator_type: str) -> Optional[dict]:
+        try:
+            r = self._client.get(
+                f"{self._rest}/indicators",
+                params={
+                    "indicator_hash": f"eq.{indicator_hash}",
+                    "indicator_type": f"eq.{indicator_type}",
+                    "select": "source,threat_tag,reputation,hit_count",
+                    "limit": "1",
+                },
+            )
+            r.raise_for_status()
+            rows = r.json()
+            return rows[0] if rows else None
+        except Exception as exc:  # DB unavailability must never block scoring
+            log.warning("intel lookup failed: %s", exc)
+            return None
+
+    def lookup(self, url: str) -> Optional[dict]:
+        from urllib.parse import urlparse
+        match = self._query(hash_indicator(url), "url")
+        if match:
+            return match
+        netloc = urlparse(url if "://" in url else "http://" + url).netloc
+        domain = netloc.split(":")[0]
+        return self._query(hash_indicator(domain), "domain") if domain else None
+
+    def record_report(self, report: dict) -> None:
+        try:
+            self._client.post(f"{self._rest}/reports", json={
+                "report_type": report["report_type"],
+                "text_hash": report.get("text_hash"),
+                "url_hash": report.get("url_hash"),
+            }).raise_for_status()
+        except Exception as exc:
+            log.warning("report persist failed: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -99,7 +152,15 @@ app = FastAPI(
 )
 
 scorer = ScamScorer(MODEL_PATH)
-intel = ThreatIntelClient()
+
+_supabase_url = os.environ.get("SUPABASE_URL", "")
+_supabase_key = os.environ.get("SUPABASE_SERVICE_KEY", "")
+if _supabase_url and _supabase_key:
+    intel = SupabaseThreatIntelClient(_supabase_url, _supabase_key)
+    log.info("Threat intel: Supabase client active (%s)", _supabase_url)
+else:
+    intel = ThreatIntelClient()
+    log.info("Threat intel: stub client (no SUPABASE_URL configured)")
 
 _stats = {
     "requests_total": 0,

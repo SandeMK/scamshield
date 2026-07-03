@@ -41,7 +41,7 @@ across all users through a cloud threat-intelligence network.
 |---|---|---|
 | [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.956 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
-| [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | 🔜 Planned |
+| [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
 | [`android/`](android/) | Android Mobile Application (§3.2.1) + In-App Analytics Dashboard (§3.2.5) | 🔜 Planned |
 | [`mock-fintech-client/`](mock-fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
 
