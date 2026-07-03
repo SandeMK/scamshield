@@ -2,15 +2,22 @@
 
 FastAPI service exposing the hybrid detection engine (rules + ML) over REST.
 
-## Endpoints
-| Method | Path | Purpose |
-|---|---|---|
-| POST | `/score/sms` | Score an SMS: risk 0-100, label, >= 3 reason codes |
-| POST | `/score/url` | Score a single URL, returns SHA-256 indicator hash |
-| POST | `/report` | User reports (scam / false_positive), PII hashed |
-| GET | `/health` | Liveness probe |
-| GET | `/stats` | Request counts + p50/p95 latency vs the 2 s target |
-| GET | `/docs` | Auto-generated Swagger UI (OpenAPI) |
+## Endpoints (Assignment 2, section 12)
+| Method | Path | Auth | Purpose |
+|---|---|---|---|
+| POST | `/api/v1/score/sms` | API key | Hybrid scoring: risk 0-100, classification, >= 3 explanation codes, ml_confidence, rule_sub_score, model_version |
+| POST | `/api/v1/score/url` | API key | Score a single URL; returns SHA-256 indicator hash |
+| POST | `/api/v1/report` | API key | Scam / false-positive reports, indicators hashed |
+| GET | `/api/v1/analytics/summary` | API key | Scan counts + p50/p95 latency for the dashboard |
+| GET | `/api/v1/health` | none | Status, active model version, DB connectivity |
+| POST | `/api/v1/intel/ingest` | Admin key | Manually trigger feed ingestion (also daily cron) |
+| GET | `/docs` | none | Auto-generated Swagger UI (OpenAPI) |
+
+Auth: `X-API-Key` header (env `API_KEY`, default `demo-key` for dev);
+admin endpoint uses `X-Admin-Key` (env `ADMIN_KEY`).
+Classification labels: SAFE, LOW_RISK, MEDIUM_RISK, HIGH_RISK, CRITICAL.
+Hybrid fusion: 60% ML + 40% rules with the critical override (section 13.3);
+an exact URL match in the threat DB floors the score at 90 (CRITICAL).
 
 ## Run locally
 ```bash

@@ -42,14 +42,14 @@ across all users through a cloud threat-intelligence network.
 | [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.956 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
 | [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
-| [`android/`](android/) | Android Mobile Application (§3.2.1) + In-App Analytics Dashboard (§3.2.5) | 🔜 Planned |
+| [`android/`](android/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | 🔜 Next |
 | [`mock-fintech-client/`](mock-fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
 
 ## Key results so far
 
 | Success criterion | Target | Achieved |
 |---|---|---|
-| Scam detection F1-score | ≥ 0.85 | **0.956** (held-out), 0.945 ± 0.010 (5-fold CV) |
+| Scam detection F1-score | ≥ 0.85 | **0.942** held-out; model selection §14.5: LogReg 0.941 > RF 0.923 > GB 0.915 (5-fold CV) |
 | Labeled dataset size | ≥ 500 | 5,572 (UCI SMS Spam Collection) |
 | Explanation reason codes | ≥ 3 per result | Guaranteed by design |
 | Scoring response time | < 2 s | ~3 ms locally (p50 1.1 ms) |
@@ -66,8 +66,8 @@ python score.py    # demo on realistic SA smishing samples
 
 ## Tech stack
 
-Python 3.11 · scikit-learn · FastAPI · Supabase (PostgreSQL) · Kotlin /
-Android Studio · URLhaus & OpenPhish feeds · GitHub Actions CI
+Python 3.11 · scikit-learn · FastAPI · Supabase (PostgreSQL) · Flutter
+(Dart) · URLhaus & OpenPhish feeds · GitHub Actions CI
 
 ## License
 

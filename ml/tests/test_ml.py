@@ -48,6 +48,7 @@ def test_scorer_contract():
     for text in (SCAM, HAM):
         res = scorer.score(text)
         assert 0 <= res["risk_score"] <= 100
-        assert res["label"] in {"HIGH_RISK", "SUSPICIOUS", "LOW_RISK", "LIKELY_SAFE"}
-        assert len(res["reasons"]) >= 3
+        assert res["classification"] in {"SAFE", "LOW_RISK", "MEDIUM_RISK",
+                                         "HIGH_RISK", "CRITICAL"}
+        assert len(res["explanation_codes"]) >= 3
     assert scorer.score(SCAM)["risk_score"] > scorer.score(HAM)["risk_score"]

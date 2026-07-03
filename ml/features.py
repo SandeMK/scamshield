@@ -95,3 +95,40 @@ def rule_feature_vector(text: str):
     """Numeric vector in FEATURE_ORDER, for stacking with TF-IDF."""
     f = extract_rules(text).features
     return [f[c] for c in FEATURE_ORDER]
+
+
+# ---------------------------------------------------------------------------
+# Engineered features (Assignment 2, ET-03): URL length, special character
+# count, IP-based URL flag, keyword frequency scores, message structure.
+# ---------------------------------------------------------------------------
+
+IP_URL_PATTERN = re.compile(r"https?://\d{1,3}(?:\.\d{1,3}){3}", re.I)
+HIGH_RISK_KEYWORDS = ["verify", "refund", "suspended", "urgent", "claim",
+                      "confirm", "account", "prize", "winner", "expires"]
+
+ENGINEERED_ORDER = [
+    "msg_length", "url_count", "max_url_length", "special_char_ratio",
+    "ip_url_flag", "url_path_segments", "keyword_frequency",
+]
+
+
+def engineered_features(text: str):
+    urls = URL_PATTERN.findall(text)
+    max_url = max(urls, key=len) if urls else ""
+    specials = sum(1 for c in text if not c.isalnum() and not c.isspace())
+    tokens = max(len(text.split()), 1)
+    kw_hits = sum(text.lower().count(k) for k in HIGH_RISK_KEYWORDS)
+    return [
+        min(len(text) / 160.0, 4.0),                 # msg_length (SMS units)
+        float(len(urls)),                            # url_count
+        min(len(max_url) / 50.0, 4.0),               # max_url_length (norm)
+        specials / max(len(text), 1),                # special_char_ratio
+        float(bool(IP_URL_PATTERN.search(text))),    # ip_url_flag
+        float(max_url.count("/") - 2 if "://" in max_url else max_url.count("/")),
+        kw_hits / tokens,                            # keyword_frequency
+    ]
+
+
+def full_feature_vector(text: str):
+    """Rule flags + engineered features — the non-text half of the model input."""
+    return rule_feature_vector(text) + engineered_features(text)

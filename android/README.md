@@ -1,8 +1,8 @@
-# ScamShield Android App (Deliverables 3.2.1 & 3.2.5)
+# ScamShield Mobile App — Flutter (Deliverables 3.2.1 & 3.2.5, FR-01..FR-10)
 
-Kotlin app: SMS listener, URL extraction, local rule pre-checks, cloud
-scoring client, scam reporting, and the in-app analytics dashboard.
+Flutter (Dart) app per Assignment 2 tech stack: SMS access via telephony
+plugin / Android platform channel, local heuristic pre-checks (FR-10),
+cloud scoring client, colour-coded Material risk cards (FR-04), reporting
+(FR-05), and the analytics dashboard (FR-08). Android-only scope (NFR-06).
 
-Distribution: sideloaded APK for pilot demonstration (not Play Store).
-
-Status: planned.
+Status: in progress.

@@ -15,13 +15,14 @@ import joblib
 from scipy.sparse import hstack, csr_matrix
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import (
     f1_score, precision_score, recall_score, accuracy_score,
     classification_report, confusion_matrix,
 )
 
-from features import rule_feature_vector, FEATURE_ORDER
+from features import full_feature_vector, FEATURE_ORDER, ENGINEERED_ORDER
 
 RANDOM_STATE = 42
 DATA_PATH = "data/sms_spam.tsv"
@@ -57,7 +58,7 @@ def build_features(texts, vectorizer=None):
     else:
         X_text = vectorizer.transform(texts)
 
-    X_rules = csr_matrix(np.array([rule_feature_vector(t) for t in texts]))
+    X_rules = csr_matrix(np.array([full_feature_vector(t) for t in texts]))
     return hstack([X_text, X_rules]).tocsr(), vectorizer
 
 
@@ -74,9 +75,27 @@ def main():
     X_train, vectorizer = build_features(X_train_txt)
     X_test, _ = build_features(X_test_txt, vectorizer)
 
-    clf = LogisticRegression(
-        max_iter=2000, C=10.0, class_weight="balanced", random_state=RANDOM_STATE
-    )
+    # Model selection (Assignment 2 §14.5): compare LogReg, Random Forest,
+    # Gradient Boosting with 5-fold CV on the training set; keep the best F1.
+    candidates = {
+        "LogisticRegression": LogisticRegression(
+            max_iter=2000, C=10.0, class_weight="balanced",
+            random_state=RANDOM_STATE),
+        "RandomForest": RandomForestClassifier(
+            n_estimators=200, class_weight="balanced", n_jobs=-1,
+            random_state=RANDOM_STATE),
+        "GradientBoosting": GradientBoostingClassifier(
+            n_estimators=150, random_state=RANDOM_STATE),
+    }
+    print("\n=== Model selection: 5-fold CV on training set ===")
+    best_name, best_clf, best_cv = None, None, -1.0
+    for name, cand in candidates.items():
+        scores = cross_val_score(cand, X_train, y_train, cv=5, scoring="f1", n_jobs=-1)
+        print(f"{name:<20} CV F1 = {scores.mean():.4f} (+/- {scores.std():.4f})")
+        if scores.mean() > best_cv:
+            best_name, best_clf, best_cv = name, cand, scores.mean()
+    print(f"Selected: {best_name}")
+    clf = best_clf
     clf.fit(X_train, y_train)
 
     y_pred = clf.predict(X_test)
@@ -91,14 +110,10 @@ def main():
     print(confusion_matrix(y_test, y_pred))
     print("\n" + classification_report(y_test, y_pred, target_names=["ham", "scam"]))
 
-    # 5-fold CV on full data for a stability check (refit per fold would be
-    # ideal; this is an approximation using the fitted vectorizer space).
-    X_all, _ = build_features(df["text"].tolist(), vectorizer)
-    cv_f1 = cross_val_score(clf, X_all, df["y"].values, cv=5, scoring="f1")
-    print(f"5-fold CV F1: mean={cv_f1.mean():.4f}  std={cv_f1.std():.4f}")
-
     joblib.dump(
-        {"vectorizer": vectorizer, "classifier": clf, "feature_order": FEATURE_ORDER},
+        {"vectorizer": vectorizer, "classifier": clf,
+         "feature_order": FEATURE_ORDER + ENGINEERED_ORDER,
+         "model_name": best_name, "model_version": "v1.0.0"},
         MODEL_PATH,
     )
     print(f"\nModel bundle saved -> {MODEL_PATH}")

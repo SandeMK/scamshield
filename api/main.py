@@ -27,7 +27,7 @@ import time
 from collections import deque
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
@@ -47,7 +47,20 @@ MODEL_PATH = os.environ.get(
                  "ml", "model.joblib"),
 )
 
-INTEL_MATCH_BONUS = 25  # score uplift when an indicator is a known-bad match
+API_KEY = os.environ.get("API_KEY", "demo-key")        # §12: API-key auth
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "admin-demo-key")
+DOMAIN_MATCH_BONUS = 15   # weaker evidence: domain-level intel match
+CRITICAL_FLOOR = 90       # §13.3: exact URL hash match in threat DB is critical
+
+
+def require_api_key(x_api_key: str = Header(default="")):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
+def require_admin_key(x_admin_key: str = Header(default="")):
+    if x_admin_key != ADMIN_KEY:
+        raise HTTPException(status_code=401, detail="Admin key required")
 
 
 # ---------------------------------------------------------------------------
@@ -84,6 +97,14 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
             timeout=1.5,  # keep total response well under the 2 s budget
         )
 
+    def ping(self) -> bool:
+        try:
+            r = self._client.get(f"{self._rest}/indicators",
+                                 params={"select": "id", "limit": "1"})
+            return r.status_code == 200
+        except Exception:
+            return False
+
     def _query(self, indicator_hash: str, indicator_type: str) -> Optional[dict]:
         try:
             r = self._client.get(
@@ -106,10 +127,11 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
         from urllib.parse import urlparse
         match = self._query(hash_indicator(url), "url")
         if match:
-            return match
+            return {**match, "match_type": "url"}
         netloc = urlparse(url if "://" in url else "http://" + url).netloc
         domain = netloc.split(":")[0]
-        return self._query(hash_indicator(domain), "domain") if domain else None
+        match = self._query(hash_indicator(domain), "domain") if domain else None
+        return {**match, "match_type": "domain"} if match else None
 
     def record_report(self, report: dict) -> None:
         try:
@@ -147,8 +169,9 @@ class ReportRequest(BaseModel):
 
 app = FastAPI(
     title="ScamShield Threat Scoring API",
-    version="0.2.0",
-    description="Hybrid (rules + ML) scam detection for SMS and URLs.",
+    version="1.0.0",
+    description="Hybrid (rules + ML) scam detection for SMS and URLs. "
+                "All /api/v1 endpoints except /health require the X-API-Key header.",
 )
 
 scorer = ScamScorer(MODEL_PATH)
@@ -171,17 +194,27 @@ _latencies_ms = deque(maxlen=1000)
 
 
 def _apply_intel(result: dict) -> dict:
-    """Check extracted URLs against threat intelligence; boost if matched."""
+    """Check extracted URLs against threat intelligence (§13.3).
+
+    Exact URL hash match = critical: score floors at 90. Domain-only match
+    is weaker corroborating evidence: +15, capped at 100.
+    """
     for url in result.get("urls", []):
         match = intel.lookup(url)
-        if match:
-            result["risk_score"] = min(100, result["risk_score"] + INTEL_MATCH_BONUS)
-            result["reasons"].insert(0, {
-                "code": "INTEL_MATCH",
-                "description": "Link matches a known malicious indicator "
-                               "in the shared threat intelligence database",
-            })
-            break
+        if not match:
+            continue
+        if match.get("match_type") == "url":
+            result["risk_score"] = max(result["risk_score"], CRITICAL_FLOOR)
+            detail = ("Exact link match in the shared threat intelligence "
+                      f"database (source: {match.get('source', 'unknown')})")
+        else:
+            result["risk_score"] = min(100, result["risk_score"] + DOMAIN_MATCH_BONUS)
+            detail = ("Link domain matches a known malicious indicator "
+                      f"(source: {match.get('source', 'unknown')})")
+        result["explanation_codes"].insert(0, {"code": "INTEL_MATCH", "detail": detail})
+        from score import _label
+        result["classification"] = _label(result["risk_score"])
+        break
     return result
 
 
@@ -189,15 +222,15 @@ def _finalize(result: dict, started: float) -> dict:
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
     _latencies_ms.append(latency_ms)
     _stats["requests_total"] += 1
-    if result["label"] == "HIGH_RISK":
+    if result["classification"] in ("HIGH_RISK", "CRITICAL"):
         _stats["high_risk_detections"] += 1
     result["latency_ms"] = latency_ms
-    log.info("SCORE risk=%s label=%s latency=%sms",
-             result["risk_score"], result["label"], latency_ms)
+    log.info("SCORE risk=%s classification=%s latency=%sms",
+             result["risk_score"], result["classification"], latency_ms)
     return result
 
 
-@app.post("/score/sms")
+@app.post("/api/v1/score/sms", dependencies=[Depends(require_api_key)])
 def score_sms(req: SmsRequest):
     started = time.perf_counter()
     result = scorer.score(req.text)
@@ -205,7 +238,7 @@ def score_sms(req: SmsRequest):
     return _finalize(result, started)
 
 
-@app.post("/score/url")
+@app.post("/api/v1/score/url", dependencies=[Depends(require_api_key)])
 def score_url(req: UrlRequest):
     started = time.perf_counter()
     # Score the URL both as text (rules like shorteners fire on it) and
@@ -219,7 +252,7 @@ def score_url(req: UrlRequest):
     return _finalize(result, started)
 
 
-@app.post("/report")
+@app.post("/api/v1/report", dependencies=[Depends(require_api_key)])
 def report(req: ReportRequest):
     payload = {
         "report_type": req.report_type,
@@ -232,13 +265,35 @@ def report(req: ReportRequest):
     return {"status": "received", "report": payload}
 
 
-@app.get("/health")
+@app.get("/api/v1/health")
 def health():
-    return {"status": "ok", "model_loaded": scorer is not None}
+    db_connected = None  # unknown when running with the stub client
+    if isinstance(intel, SupabaseThreatIntelClient):
+        db_connected = intel.ping()
+    return {
+        "status": "ok",
+        "model_version": scorer.model_version + f" ({scorer.model_name})",
+        "db_connected": db_connected,
+    }
 
 
-@app.get("/stats")
-def stats():
+@app.post("/api/v1/intel/ingest", dependencies=[Depends(require_admin_key)])
+def trigger_ingest():
+    """Manually trigger feed ingestion (§12) — also runs on the daily cron."""
+    import threading
+
+    def _run():
+        import subprocess
+        script = os.path.join(os.path.dirname(os.path.dirname(
+            os.path.abspath(__file__))), "ingestion", "ingest.py")
+        subprocess.run([sys.executable, script], check=False)
+
+    threading.Thread(target=_run, daemon=True).start()
+    return {"status": "ingestion_started"}
+
+
+@app.get("/api/v1/analytics/summary", dependencies=[Depends(require_api_key)])
+def analytics_summary():
     lat = sorted(_latencies_ms)
     return {
         **_stats,
