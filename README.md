@@ -42,7 +42,7 @@ across all users through a cloud threat-intelligence network.
 | [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.956 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
 | [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
-| [`android/`](android/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | 🔜 Next |
+| [`android/`](android/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Source complete — build via `android/setup.sh` |
 | [`mock-fintech-client/`](mock-fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
 
 ## Key results so far
@@ -63,6 +63,16 @@ pip install -r requirements.txt
 python train.py    # auto-downloads dataset, trains, evaluates, saves model
 python score.py    # demo on realistic SA smishing samples
 ```
+
+## Database note (design deviation)
+
+Assignment 2 specified Cloud Firestore; the implementation uses Supabase
+(PostgreSQL). Rationale: the indicator workload is relational (unique
+hash+type upserts with `hit_count` increments and reputation merging via a
+single SQL function), row-level security locks tables to the service key,
+and the free tier requires no billing account. The documented design --
+collections, fields, SHA-256 hashing, first/last-seen metadata -- maps
+one-to-one onto the SQL schema in `ingestion/schema.sql`.
 
 ## Tech stack
 
