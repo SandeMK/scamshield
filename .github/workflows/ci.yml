@@ -1,0 +1,15 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  ml-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r ml/requirements.txt
+      - name: Run unit tests
+        run: cd ml && python -m pytest tests/ -v
+      - name: Train and evaluate model (F1 gate >= 0.85)
+        run: cd ml && python train.py
