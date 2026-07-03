@@ -19,7 +19,7 @@ dashboard. Android-only scope (NFR-06), sideloaded for the pilot demo.
 
 ## Setup (one time, on your machine)
 ```bash
-cd android
+cd mobile-app
 ./setup.sh        # runs flutter create, installs source, patches manifest
 cd app
 flutter run       # with an emulator running or device connected

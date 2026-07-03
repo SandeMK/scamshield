@@ -6,6 +6,7 @@ venv/
 ml/data/*.tsv
 .DS_Store
 *.iml
-android/.gradle/
-android/local.properties
-android/build/
+mobile-app/app/.gradle/
+mobile-app/app/local.properties
+mobile-app/app/build/
+mobile-app/app/.dart_tool/

@@ -42,8 +42,8 @@ across all users through a cloud threat-intelligence network.
 | [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.956 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
 | [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
-| [`android/`](android/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Source complete — build via `android/setup.sh` |
-| [`mock-fintech-client/`](mock-fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
+| [`mobile-app/`](mobile-app/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Source complete — build via `mobile-app/setup.sh` |
+| [`fintech-client/`](fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
 
 ## Key results so far
 
