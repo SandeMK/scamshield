@@ -1,0 +1,32 @@
+<svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <!-- ScamShield app icon: shield guarding an SMS bubble -->
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2E7D32"/>
+      <stop offset="1" stop-color="#1B5E20"/>
+    </linearGradient>
+  </defs>
+  <!-- background (full-bleed; launcher masks it round/squircle) -->
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <!-- shield -->
+  <path d="M512 150
+           L800 260
+           V520
+           C800 700 665 830 512 890
+           C359 830 224 700 224 520
+           V260 Z"
+        fill="#FFFFFF"/>
+  <path d="M512 205
+           L748 297
+           V520
+           C748 668 637 780 512 834
+           C387 780 276 668 276 520
+           V297 Z"
+        fill="#1B5E20"/>
+  <!-- SMS bubble -->
+  <rect x="356" y="380" width="312" height="220" rx="48" fill="#FFFFFF"/>
+  <path d="M420 600 L420 668 L500 600 Z" fill="#FFFFFF"/>
+  <!-- exclamation mark -->
+  <rect x="484" y="415" width="56" height="105" rx="28" fill="#E64A19"/>
+  <circle cx="512" cy="562" r="30" fill="#E64A19"/>
+</svg>
