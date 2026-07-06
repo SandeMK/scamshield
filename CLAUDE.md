@@ -47,13 +47,34 @@ FR-xx, NFR-xx, ET-xx) are the authoritative spec for contracts and naming.
   local env vars only. App is demo-only: sideloaded, no Play Store.
 
 ## Current state / next steps
-1. User is getting the Flutter app running locally (physical Samsung
-   device — API base URL must be the Mac's LAN IP, not 10.0.2.2).
-2. TODO: deploy API to Render free tier (Dockerfile exists at
-   api/Dockerfile; add render.yaml, keep-alive ping for demo day).
-3. TODO: Flutter widget tests (§14.2) and integration test (§14.3).
-4. TODO: measure + record §14.6 metrics (100-request latency batch,
-   30 s propagation test) for the final report.
-5. Known model quirk for the report: legitimate bank/OTP notifications can
-   score MEDIUM_RISK (shared vocabulary with phishing) — discussed as a
-   finding, mitigated by tiered actions + false-positive reporting.
+App builds and runs on the user's physical Samsung (S938B, Android 16).
+Assignment 2 was submitted 30 June; demo is later — no immediate deadline.
+
+1. TODO (mobile-app, Claude Code): persistent background SMS capture via
+   FOREGROUND SERVICE. Agreed spec:
+   - Kotlin foreground Service with persistent notification
+     ("ScamShield is protecting you"); started on app launch.
+   - Cache the Flutter engine via FlutterEngineCache in an Application
+     subclass so the existing EventChannel pipeline survives the activity
+     being swiped away. Do NOT rebuild the pipeline natively and do NOT
+     use headless/manifest-receiver architecture (documented as future
+     work instead).
+   - Manifest: FOREGROUND_SERVICE permission + foregroundServiceType
+     "specialUse" (sideload-only, no Play review concern).
+   - Optional: BOOT_COMPLETED receiver to restart after reboot.
+   - One-time prompt guiding the user to Samsung battery exemption
+     (Settings -> Battery -> app -> Unrestricted); One UI kills FGS
+     apps otherwise.
+   - High-risk results while backgrounded should post a notification.
+2. TODO (mobile-app, Claude Code): widget tests (§14.2), integration
+   test (§14.3).
+3. TODO (user + chat): deploy API to Render free tier — render.yaml is
+   ready; then set repo variable API_BASE_URL for the keep-alive workflow.
+4. TODO: run perf/latency_test.py and perf/propagation_test.py against
+   the deployed URL; record numbers for the report (§14.6).
+5. TODO (user): docs/screenshots/ of the four tabs + a CRITICAL detail
+   sheet, referenced from mobile-app/README.md.
+6. Report notes: (a) legitimate bank/OTP messages can score MEDIUM_RISK
+   (shared vocabulary) — finding, mitigated by tiered actions +
+   false-positive reporting; (b) foreground-service pilot approach vs
+   manifest-receiver production approach is a good trade-off discussion.
