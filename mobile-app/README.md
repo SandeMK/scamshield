@@ -8,7 +8,7 @@ dashboard. Android-only scope (NFR-06), sideloaded for the pilot demo.
 ## Requirement coverage
 | Req | Where |
 |---|---|
-| FR-01 SMS listening + extraction | `platform/MainActivity.kt` (EventChannel) + `lib/main.dart` |
+| FR-01 SMS listening + extraction | `android/.../SmsProtectionService.kt` (FGS EventChannel) + `lib/services/sms_channel.dart` |
 | FR-02 HTTPS transmission | `lib/services/api_client.dart` |
 | FR-04 Colour-coded Material cards | `lib/screens/home_screen.dart`, `lib/util.dart` |
 | FR-05 Report scam / false positive | detail sheet in `home_screen.dart` |
@@ -17,22 +17,31 @@ dashboard. Android-only scope (NFR-06), sideloaded for the pilot demo.
 | NFR-08 Offline fallback with notice | `lib/services/scan_store.dart` (`offline` flag) |
 | US-02 Explanation codes | detail sheet lists code + detail per entry |
 
-## Setup (one time, on your machine)
+## Run (clone-and-run, no setup needed)
 ```bash
 cd mobile-app
-./setup.sh        # runs flutter create, installs source, patches manifest
-cd app
-flutter run       # with an emulator running or device connected
+flutter pub get
+flutter run -d <device-id>   # flutter devices to list
 ```
+
+Android scaffolding is fully committed. No `setup.sh` step required.
 
 ## Demo tips
 - **Simulate tab**: injects realistic SA smishing samples through the exact
   same pipeline as real SMS — demo-safe, no network SMS dependency.
-- **Real SMS on the emulator**: with the app open, use Android Studio's
-  Extended Controls (⋯ on the emulator toolbar) -> Phone -> SMS to send a
-  message; it will appear in the Scans tab automatically.
-- **Settings tab**: point Base URL at `http://10.0.2.2:8000` while running
-  the API locally (`cd api && uvicorn main:app`), or at the deployed URL.
-- Note: SMS capture works while the app is running (foreground/background
-  with the activity alive). Persistent background capture is intentionally
-  out of pilot scope.
+- **Real SMS**: text the device from another number; it will appear in the
+  Scans tab automatically (foreground service keeps the channel alive even
+  when the app is swiped away).
+- **Settings tab**: Base URL defaults to the deployed Render API. Override
+  to `http://<mac-lan-ip>:8000` if running the API locally.
+- **Battery**: grant "Unrestricted" battery access in Samsung Settings →
+  Battery → ScamShield to prevent One UI from killing the foreground service.
+
+## Tests
+```bash
+# Widget + unit tests (§14.2) — runs on host, no device needed
+flutter test test/widget_test.dart
+
+# Integration test (§14.3) — requires connected device
+flutter test integration_test/app_test.dart -d <device-id>
+```
