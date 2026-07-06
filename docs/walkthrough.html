@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ScamShield — How it works</title>
+<style>
+  :root{
+    --canvas:#0B1410; --panel:#12211A; --panel-2:#0F1B15;
+    --ink:#ECF4EE; --muted:#8FA79A; --line:#24382E;
+    --green:#4CC46A; --deep:#1B5E20; --alert:#FF7A50; --crit:#FF5252;
+    --amber:#FFC24B;
+    --display:"Futura","Avenir Next","Century Gothic","Segoe UI",sans-serif;
+    --body:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;margin:0}
+  html,body{height:100%}
+  body{background:var(--canvas);color:var(--ink);font-family:var(--body);
+       display:flex;flex-direction:column;overflow:hidden}
+
+  header{display:flex;align-items:center;gap:14px;padding:18px 28px 10px}
+  .shield{width:34px;height:34px;flex:none}
+  h1{font-family:var(--display);font-size:clamp(18px,2.2vw,26px);
+     letter-spacing:.04em;font-weight:700}
+  h1 span{color:var(--green)}
+  .sub{color:var(--muted);font-size:13px;margin-left:auto;font-family:var(--mono)}
+
+  .acts{display:flex;gap:8px;padding:6px 28px}
+  .act-tab{background:none;border:1px solid var(--line);color:var(--muted);
+    padding:8px 16px;border-radius:999px;font:600 13px var(--display);
+    letter-spacing:.06em;cursor:pointer}
+  .act-tab[aria-selected="true"]{color:var(--canvas);background:var(--green);
+    border-color:var(--green)}
+  .act-tab:focus-visible,button:focus-visible{outline:2px solid var(--green);outline-offset:2px}
+
+  /* ---------- stage ---------- */
+  .stage-wrap{flex:1;position:relative;margin:8px 28px;min-height:0}
+  .stage{position:absolute;inset:0;background:var(--panel-2);
+    border:1px solid var(--line);border-radius:18px;overflow:hidden}
+  .stage[hidden]{display:none}
+  svg.wires{position:absolute;inset:0;width:100%;height:100%}
+  .wire{stroke:var(--line);stroke-width:2;fill:none}
+  .wire.hot{stroke:var(--green);filter:drop-shadow(0 0 6px rgba(76,196,106,.6));
+    transition:stroke .4s}
+  .wire.hot-alert{stroke:var(--alert);filter:drop-shadow(0 0 6px rgba(255,122,80,.6))}
+
+  .node{position:absolute;transform:translate(-50%,-50%);text-align:center;
+    padding:12px 16px;background:var(--panel);border:1px solid var(--line);
+    border-radius:14px;min-width:110px;transition:border-color .4s,box-shadow .4s;
+    opacity:.55}
+  .node .icon{font-size:22px;line-height:1}
+  .node .name{font:700 12px var(--display);letter-spacing:.08em;margin-top:6px}
+  .node .meta{font:11px var(--mono);color:var(--muted);margin-top:3px}
+  .node.lit{opacity:1;border-color:var(--green);
+    box-shadow:0 0 0 1px var(--green),0 0 22px rgba(76,196,106,.25)}
+  .node.lit-alert{opacity:1;border-color:var(--alert);
+    box-shadow:0 0 0 1px var(--alert),0 0 22px rgba(255,122,80,.3)}
+
+  /* the protagonist: an SMS bubble that travels */
+  .bubble{position:absolute;max-width:240px;padding:10px 13px;background:#F4FBF5;
+    color:#102417;border-radius:14px 14px 14px 4px;font-size:12.5px;line-height:1.45;
+    transform:translate(-50%,-50%);transition:left 1s cubic-bezier(.5,0,.2,1),
+      top 1s cubic-bezier(.5,0,.2,1),opacity .4s,border .3s;opacity:0;
+    box-shadow:0 6px 24px rgba(0,0,0,.45)}
+  .bubble.show{opacity:1}
+  .bubble.flag{border:2px solid var(--amber)}
+  .bubble.crit{border:2px solid var(--crit)}
+  .bubble .from{font:700 10px var(--mono);color:#5B7263;display:block;margin-bottom:3px}
+
+  .chip{position:absolute;transform:translate(-50%,-50%);font:11px var(--mono);
+    background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    padding:5px 9px;opacity:0;transition:opacity .35s,left 1s cubic-bezier(.5,0,.2,1),
+    top 1s cubic-bezier(.5,0,.2,1);white-space:nowrap}
+  .chip.show{opacity:1}
+  .chip.code{border-color:var(--alert);color:var(--alert)}
+  .chip.ok{border-color:var(--green);color:var(--green)}
+  .chip.hash{border-color:var(--muted);color:var(--muted)}
+
+  /* score gauge */
+  .gauge{position:absolute;transform:translate(-50%,-50%);width:96px;height:96px;
+    opacity:0;transition:opacity .4s}
+  .gauge.show{opacity:1}
+  .gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
+  .gauge .track{stroke:var(--line);stroke-width:9;fill:none}
+  .gauge .arc{stroke:var(--crit);stroke-width:9;fill:none;stroke-linecap:round;
+    stroke-dasharray:264;stroke-dashoffset:264;transition:stroke-dashoffset 1.1s ease}
+  .gauge.run .arc{stroke-dashoffset:26} /* 90/100 of 264 */
+  .gauge .val{position:absolute;inset:0;display:grid;place-items:center;
+    font:700 22px var(--mono);color:var(--crit)}
+  .gauge .lbl{position:absolute;left:0;right:0;top:100%;text-align:center;
+    font:700 11px var(--display);letter-spacing:.1em;color:var(--crit)}
+
+  /* ---------- caption & controls ---------- */
+  .deck{display:flex;align-items:center;gap:18px;padding:14px 28px 20px}
+  .stepno{font:700 30px var(--mono);color:var(--green);min-width:56px}
+  .cap{flex:1;min-width:0}
+  .cap .t{font:700 16px var(--display);letter-spacing:.03em}
+  .cap .d{color:var(--muted);font-size:13.5px;margin-top:3px;max-width:70ch}
+  .dots{display:flex;gap:6px}
+  .dots i{width:8px;height:8px;border-radius:50%;background:var(--line)}
+  .dots i.on{background:var(--green)}
+  .ctl{display:flex;gap:8px}
+  .ctl button{background:var(--panel);border:1px solid var(--line);color:var(--ink);
+    width:42px;height:42px;border-radius:12px;font-size:16px;cursor:pointer}
+  .ctl button:hover{border-color:var(--green)}
+  .hint{position:absolute;right:34px;top:14px;font:11px var(--mono);color:var(--muted)}
+
+  @media (prefers-reduced-motion:reduce){
+    .bubble,.chip{transition:opacity .2s}
+    .gauge .arc{transition:none}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <svg class="shield" viewBox="0 0 100 100"><path d="M50 6 84 19v32c0 22-16 37-34 44C32 88 16 73 16 51V19Z" fill="none" stroke="#4CC46A" stroke-width="7"/><circle cx="50" cy="42" r="5" fill="#FF7A50"/><rect x="46.5" y="52" width="7" height="18" rx="3.5" fill="#FF7A50"/></svg>
+  <h1>SCAM<span>SHIELD</span> — how the platform works</h1>
+  <div class="sub">ISJ107V · live system walkthrough</div>
+</header>
+
+<div class="acts" role="tablist">
+  <button class="act-tab" role="tab" aria-selected="true" data-act="0">ACT 1 · Scoring a message</button>
+  <button class="act-tab" role="tab" aria-selected="false" data-act="1">ACT 2 · One report protects everyone</button>
+</div>
+
+<div class="stage-wrap">
+  <div class="hint">←/→ step · space auto-play</div>
+
+  <!-- ===================== ACT 1 stage ===================== -->
+  <section class="stage" id="stage0">
+    <svg class="wires" viewBox="0 0 1200 560" preserveAspectRatio="none">
+      <path id="w-pa"  class="wire" d="M210 280 H 380"/>
+      <path id="w-ar"  class="wire" d="M470 250 C 520 190, 560 175, 605 170"/>
+      <path id="w-am"  class="wire" d="M470 310 C 520 370, 560 385, 605 390"/>
+      <path id="w-rf"  class="wire" d="M715 170 C 770 175, 800 210, 838 250"/>
+      <path id="w-mf"  class="wire" d="M715 390 C 770 385, 800 350, 838 310"/>
+      <path id="w-ad"  class="wire" d="M440 330 C 480 470, 850 505, 985 480"/>
+      <path id="w-ret" class="wire" d="M885 235 C 700 90, 330 110, 165 235"/>
+    </svg>
+    <div class="node" style="left:14%;top:50%"  id="n-phone"><div class="icon">📱</div><div class="name">ANDROID APP</div><div class="meta">Flutter · FGS</div></div>
+    <div class="node" style="left:36%;top:50%"  id="n-api"><div class="icon">☁️</div><div class="name">SCORING API</div><div class="meta">/api/v1 · X-API-Key</div></div>
+    <div class="node" style="left:55%;top:30%"  id="n-rules"><div class="icon">📏</div><div class="name">RULE ENGINE</div><div class="meta">9 heuristics</div></div>
+    <div class="node" style="left:55%;top:70%"  id="n-ml"><div class="icon">🧠</div><div class="name">ML CLASSIFIER</div><div class="meta">TF-IDF · RandomForest</div></div>
+    <div class="node" style="left:75%;top:50%"  id="n-fuse"><div class="icon">⚖️</div><div class="name">HYBRID FUSION</div><div class="meta">40% rules + 60% ML</div></div>
+    <div class="node" style="left:89%;top:85%"  id="n-db"><div class="icon">🗄️</div><div class="name">THREAT INTEL DB</div><div class="meta">4,162+ hashed indicators</div></div>
+
+    <div class="bubble" id="b1" style="left:14%;top:26%">
+      <span class="from">+27 83 555 0199</span>
+      SARS eFiling: You have a pending refund of R3,450. Confirm your ID at
+      <u>sars-refunds.xyz/claim</u> within 24 hours.
+    </div>
+    <div class="chip" id="c-local" style="left:14%;top:66%">⚠ local rules: provisional flag</div>
+    <div class="chip code" id="c-r1" style="left:55%;top:16%">URGENCY_LANGUAGE</div>
+    <div class="chip code" id="c-r2" style="left:66%;top:22%">IMPERSONATION</div>
+    <div class="chip code" id="c-r3" style="left:61%;top:40%">CREDENTIAL_REQUEST</div>
+    <div class="chip" id="c-ml" style="left:55%;top:82%">ml_confidence = 0.94</div>
+    <div class="chip hash" id="c-hash" style="left:63%;top:88%">sha256(url) → 7f3a…c2e1</div>
+    <div class="chip ok" id="c-dbres" style="left:89%;top:73%">lookup: no match (new campaign)</div>
+    <div class="gauge" id="g1" style="left:75%;top:26%">
+      <svg viewBox="0 0 96 96"><circle class="track" cx="48" cy="48" r="42"/><circle class="arc" cx="48" cy="48" r="42"/></svg>
+      <div class="val">90</div><div class="lbl">CRITICAL</div>
+    </div>
+  </section>
+
+  <!-- ===================== ACT 2 stage ===================== -->
+  <section class="stage" id="stage1" hidden>
+    <svg class="wires" viewBox="0 0 1200 560" preserveAspectRatio="none">
+      <path id="v-aapi" class="wire" d="M225 170 C 330 190, 380 230, 440 258"/>
+      <path id="v-bapi" class="wire" d="M225 400 C 330 380, 380 335, 440 305"/>
+      <path id="v-adb"  class="wire" d="M600 280 H 830"/>
+    </svg>
+    <div class="node" style="left:15%;top:30%" id="m-ua"><div class="icon">🙋</div><div class="name">USER A</div><div class="meta">reports the scam</div></div>
+    <div class="node" style="left:15%;top:72%" id="m-ub"><div class="icon">🙎</div><div class="name">USER B</div><div class="meta">receives it later</div></div>
+    <div class="node" style="left:44%;top:50%" id="m-api"><div class="icon">☁️</div><div class="name">SCORING API</div><div class="meta">/report · /score</div></div>
+    <div class="node" style="left:78%;top:50%" id="m-db"><div class="icon">🗄️</div><div class="name">SHARED THREAT DB</div><div class="meta">Supabase · RLS</div></div>
+
+    <div class="bubble" id="b2" style="left:15%;top:12%">
+      <span class="from">29811</span>
+      Your parcel is held at customs. Pay the R45 release fee at
+      <u>parcel-fee-za.xyz</u> to avoid return.
+    </div>
+    <div class="chip" id="d-61" style="left:15%;top:47%">score 61 · MEDIUM_RISK (unknown URL)</div>
+    <div class="chip code" id="d-rep" style="left:30%;top:26%">POST /api/v1/report · "scam"</div>
+    <div class="chip hash" id="d-hash" style="left:60%;top:38%">sha256(url) + sha256(domain)</div>
+    <div class="chip ok" id="d-up" style="left:78%;top:33%">indicator upserted · 0.8 s measured</div>
+    <div class="chip code" id="d-match" style="left:60%;top:64%">INTEL_MATCH</div>
+    <div class="gauge" id="g2" style="left:33%;top:78%">
+      <svg viewBox="0 0 96 96"><circle class="track" cx="48" cy="48" r="42"/><circle class="arc" cx="48" cy="48" r="42"/></svg>
+      <div class="val">90</div><div class="lbl">CRITICAL</div>
+    </div>
+  </section>
+</div>
+
+<div class="deck">
+  <div class="stepno" id="stepno">1</div>
+  <div class="cap"><div class="t" id="cap-t"></div><div class="d" id="cap-d"></div></div>
+  <div class="dots" id="dots"></div>
+  <div class="ctl">
+    <button id="prev" aria-label="Previous step">‹</button>
+    <button id="play" aria-label="Auto-play">▶</button>
+    <button id="next" aria-label="Next step">›</button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const lit=(id,on,alert)=>{const n=$(id);n.classList.toggle('lit',on&&!alert);n.classList.toggle('lit-alert',!!(on&&alert));};
+const hot=(id,on,alert)=>{const w=$(id);w.classList.toggle('hot',on&&!alert);w.classList.toggle('hot-alert',!!(on&&alert));};
+const show=(id,on)=>$(id).classList.toggle('show',on);
+const move=(id,x,y)=>{const e=$(id);e.style.left=x+'%';e.style.top=y+'%';};
+
+/* Every step = a function that sets the whole scene (idempotent, so
+   stepping backwards works). */
+const ACTS=[
+{ name:"Scoring a message", steps:[
+ {t:"An SMS arrives", d:"A smishing message lands on the phone. The foreground service is listening for the SMS_RECEIVED broadcast — the app doesn't need to be open.",
+  f(){reset0();show('b1',true);move('b1',14,26);lit('n-phone',true);}},
+ {t:"Instant local check (FR-10)", d:"Before any network call, lightweight on-device rules scan the text. High-risk indicators trigger an immediate provisional warning.",
+  f(){this.steps?0:0;show('b1',true);move('b1',14,26);$('b1').classList.add('flag');show('c-local',true);lit('n-phone',true);}},
+ {t:"Features travel to the cloud", d:"The message and extracted URLs are sent over HTTPS with the X-API-Key header to POST /api/v1/score/sms. Nothing is stored server-side in raw form.",
+  f(){show('b1',true);move('b1',36,26);$('b1').classList.add('flag');lit('n-phone',true);lit('n-api',true);hot('w-pa',true);}},
+ {t:"The rule engine fires", d:"Nine deterministic heuristics run — urgency language, institution impersonation, credential requests, URL shorteners. Each hit becomes a human-readable reason code.",
+  f(){show('b1',true);move('b1',36,26);$('b1').classList.add('flag');lit('n-api',true);lit('n-rules',true,true);hot('w-ar',true);['c-r1','c-r2','c-r3'].forEach(c=>show(c,true));}},
+ {t:"The ML classifier votes", d:"TF-IDF text features plus engineered URL features feed the trained classifier. It has never seen this exact message — it recognises the pattern. Confidence: 0.94.",
+  f(){show('b1',true);move('b1',36,26);$('b1').classList.add('flag');lit('n-api',true);lit('n-rules',true,true);lit('n-ml',true);hot('w-am',true);['c-r1','c-r2','c-r3','c-ml'].forEach(c=>show(c,true));}},
+ {t:"Threat intelligence lookup", d:"The URL is SHA-256 hashed — privacy by design — and checked against 4,000+ shared indicators from URLhaus, OpenPhish and user reports. This campaign is brand new: no match.",
+  f(){show('b1',true);move('b1',36,26);$('b1').classList.add('flag');lit('n-api',true);lit('n-db',true);hot('w-ad',true);show('c-hash',true);show('c-dbres',true);['c-r1','c-r2','c-r3','c-ml'].forEach(c=>show(c,true));}},
+ {t:"Hybrid fusion → 90 · CRITICAL", d:"40% rules + 60% ML, with a critical override. The two layers agree — the score sweeps to 90. Rules make it explainable; ML makes it general.",
+  f(){show('b1',true);move('b1',36,26);$('b1').classList.add('flag');lit('n-api',true);lit('n-fuse',true,true);hot('w-rf',true,true);hot('w-mf',true,true);show('g1',true);requestAnimationFrame(()=>$('g1').classList.add('run'));['c-r1','c-r2','c-r3','c-ml'].forEach(c=>show(c,true));}},
+ {t:"The verdict returns — explained", d:"Risk 90, CRITICAL, with at least three plain-language reason codes. The user sees why, not just a number. Median round trip in production: 0.77 s.",
+  f(){show('b1',true);move('b1',14,26);$('b1').classList.remove('flag');$('b1').classList.add('crit');lit('n-phone',true,true);lit('n-fuse',true,true);hot('w-ret',true,true);show('g1',true);$('g1').classList.add('run');}},
+]},
+{ name:"One report protects everyone", steps:[
+ {t:"A new campaign appears", d:"User A receives a courier-fee scam. The URL was registered yesterday — no blocklist on earth knows it. The hybrid engine scores it 61, MEDIUM_RISK, on pattern alone.",
+  f(){reset1();show('b2',true);move('b2',15,12);lit('m-ua',true);show('d-61',true);}},
+ {t:"User A reports it", d:"One tap in the app: Report scam. The message and URL go to POST /api/v1/report.",
+  f(){show('b2',true);move('b2',30,12);lit('m-ua',true);lit('m-api',true);hot('v-aapi',true);show('d-rep',true);}},
+ {t:"The indicator is hashed", d:"The API extracts every URL and hashes both the full URL and its domain with SHA-256. Raw content never enters the shared database.",
+  f(){show('b2',false);lit('m-api',true);show('d-hash',true);show('d-rep',true);}},
+ {t:"Shared intelligence — in 0.8 s", d:"The hashed indicators are upserted into the Supabase threat DB, tagged user_report. Measured propagation in production: 0.8 seconds against a 30-second target.",
+  f(){lit('m-api',true);lit('m-db',true,true);hot('v-adb',true,true);move('d-hash',72,38);show('d-hash',true);show('d-up',true);}},
+ {t:"User B gets the same scam", d:"Minutes later the identical message reaches User B — someone who has never seen this campaign.",
+  f(){lit('m-db',true,true);show('d-up',true);show('b2',true);move('b2',15,88);lit('m-ub',true);}},
+ {t:"INTEL_MATCH → floored at CRITICAL", d:"User B's lookup hits User A's indicator. The score is floored at 90, CRITICAL, with an INTEL_MATCH reason code. One report protected every user on the network.",
+  f(){show('b2',true);move('b2',30,88);$('b2').classList.add('crit');lit('m-ub',true,true);lit('m-api',true);lit('m-db',true,true);hot('v-bapi',true,true);hot('v-adb',true,true);show('d-match',true);show('g2',true);requestAnimationFrame(()=>$('g2').classList.add('run'));}},
+]}];
+
+function wipe(stage){
+  stage.querySelectorAll('.node').forEach(n=>n.classList.remove('lit','lit-alert'));
+  stage.querySelectorAll('.wire').forEach(w=>w.classList.remove('hot','hot-alert'));
+  stage.querySelectorAll('.chip,.bubble,.gauge').forEach(e=>e.classList.remove('show','run','flag','crit'));
+}
+function reset0(){wipe($('stage0'));move('b1',14,26);move('c-hash',63,88);}
+function reset1(){wipe($('stage1'));move('b2',15,12);move('d-hash',60,38);}
+
+let act=0,step=0,timer=null;
+const dots=$('dots');
+function renderDots(){dots.innerHTML='';ACTS[act].steps.forEach((_,i)=>{const d=document.createElement('i');if(i<=step)d.classList.add('on');dots.appendChild(d);});}
+function go(a,s){
+  act=a;step=Math.max(0,Math.min(s,ACTS[a].steps.length-1));
+  document.querySelectorAll('.act-tab').forEach((t,i)=>t.setAttribute('aria-selected',i===act));
+  $('stage0').hidden=act!==0;$('stage1').hidden=act!==1;
+  (act===0?reset0:reset1)();
+  /* replay states up to current step so back-stepping is consistent */
+  for(let i=0;i<=step;i++)ACTS[act].steps[i].f();
+  $('stepno').textContent=step+1;
+  $('cap-t').textContent=ACTS[act].steps[step].t;
+  $('cap-d').textContent=ACTS[act].steps[step].d;
+  renderDots();
+}
+function next(){ if(step<ACTS[act].steps.length-1)go(act,step+1);
+  else if(act<ACTS.length-1)go(act+1,0); else stop(); }
+function prev(){ if(step>0)go(act,step-1); else if(act>0)go(act-1,ACTS[act-1].steps.length-1); }
+function play(){ if(timer)return stop(); $('play').textContent='⏸'; timer=setInterval(next,3400); }
+function stop(){ clearInterval(timer);timer=null;$('play').textContent='▶'; }
+
+$('next').onclick=()=>{stop();next();};
+$('prev').onclick=()=>{stop();prev();};
+$('play').onclick=play;
+document.querySelectorAll('.act-tab').forEach((t,i)=>t.onclick=()=>{stop();go(i,0);});
+addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'){stop();next();}
+  else if(e.key==='ArrowLeft'){stop();prev();}
+  else if(e.key===' '){e.preventDefault();play();}
+});
+go(0,0);
+</script>
+</body>
+</html>
