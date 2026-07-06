@@ -1,4 +1,4 @@
-package com.scamshield.app
+package com.scamshield.scamshield_app
 
 import android.Manifest
 import android.content.BroadcastReceiver

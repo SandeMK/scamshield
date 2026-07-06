@@ -1,4 +1,4 @@
-# ScamShield — Project Context
+opme# ScamShield — Project Context
 
 ISJ107V Integrated Software Project (TUT). Smishing (SMS phishing) detection
 for South Africa: Flutter app + FastAPI hybrid (rules + ML) scoring API +
@@ -18,10 +18,10 @@ FR-xx, NFR-xx, ET-xx) are the authoritative spec for contracts and naming.
 - `ingestion/` — schema.sql (run in Supabase SQL editor; already applied),
   ingest.py (URLhaus + OpenPhish -> hashed indicators). Runs daily via
   GitHub Actions (secrets already configured in repo settings).
-- `mobile-app/` — Flutter source in lib/ + platform/MainActivity.kt
-  (EventChannel 'scamshield/sms'). NOT a runnable project by itself:
-  `./setup.sh` runs `flutter create` into `mobile-app/app/` (gitignored
-  build dirs) and copies the source in. Requires Flutter >= 3.22.
+- `mobile-app/` — Flutter project root. lib/ + pubspec.yaml + platform/
+  MainActivity.kt (EventChannel 'scamshield/sms') are committed. `./setup.sh`
+  runs `flutter create .` in-place to generate android/ scaffolding, patches
+  permissions + MainActivity, then `flutter pub get`. Requires Flutter >= 3.22.
 - `fintech-client/` — third-party interoperability demo (client.py).
 - `api/postman_collection.json` — contract tests (§14.4).
 
@@ -30,7 +30,7 @@ FR-xx, NFR-xx, ET-xx) are the authoritative spec for contracts and naming.
 - Tests: `python -m pytest tests/` inside ml/, api/, ingestion/ (17 total)
 - Retrain: `cd ml && python train.py` (do this if sklearn version changes;
   model.joblib is committed and version-stamped, ET-05)
-- App: `cd mobile-app && ./setup.sh && cd app && flutter run`
+- App: `cd mobile-app && ./setup.sh && flutter run`
 - Fintech demo: `python fintech-client/client.py --base-url <url>`
 
 ## Conventions & decisions (do not silently change)

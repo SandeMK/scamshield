@@ -1,0 +1,13 @@
+# Flutter build artifacts
+.dart_tool/
+build/
+pubspec.lock
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+android/.gradle/
+android/local.properties
+
+# Generated setup output (entire app/ subdir from old setup.sh, if present)
+app/
