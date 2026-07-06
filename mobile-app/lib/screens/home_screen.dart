@@ -2,44 +2,160 @@
 /// explanation codes (US-02) and report actions (FR-05, US-03/04).
 library;
 
+import 'dart:math';
 import 'package:flutter/material.dart';
 import '../models.dart';
 import '../services/scan_store.dart';
 import '../util.dart';
 
-class HomeScreen extends StatelessWidget {
+enum _Filter { all, suspicious, reported }
+
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  _Filter _filter = _Filter.all;
+
+  List<Scan> _filtered(List<Scan> scans) => switch (_filter) {
+        _Filter.all => scans,
+        _Filter.suspicious => scans
+            .where((s) =>
+                {'MEDIUM_RISK', 'HIGH_RISK', 'CRITICAL'}
+                    .contains(s.result?.classification) ||
+                (s.result == null && s.localScore >= 40))
+            .toList(),
+        _Filter.reported => scans.where((s) => s.reported).toList(),
+      };
 
   @override
   Widget build(BuildContext context) {
-    final store = ScanStore.instance;
     return ListenableBuilder(
-      listenable: store,
+      listenable: ScanStore.instance,
       builder: (context, _) {
-        if (store.scans.isEmpty) {
-          return const Center(
-            child: Padding(
-              padding: EdgeInsets.all(32),
-              child: Text(
-                'No messages scanned yet.\n\nIncoming SMS will appear here '
-                'automatically, or use the Simulate tab to inject a test message.',
-                textAlign: TextAlign.center,
-              ),
+        final scans = _filtered(ScanStore.instance.scans);
+        return Column(
+          children: [
+            _FilterBar(
+              current: _filter,
+              onChanged: (f) => setState(() => _filter = f),
             ),
-          );
-        }
-        return ListView.builder(
-          itemCount: store.scans.length,
-          itemBuilder: (context, i) => _ScanCard(scan: store.scans[i]),
+            Expanded(
+              child: scans.isEmpty
+                  ? _EmptyState(filter: _filter)
+                  : ListView.builder(
+                      itemCount: scans.length,
+                      itemBuilder: (context, i) {
+                        final scan = scans[i];
+                        final isNew =
+                            DateTime.now().difference(scan.timestamp).inSeconds < 5;
+                        final card = _ScanCard(key: ValueKey(scan.id), scan: scan);
+                        if (!isNew) return card;
+                        return TweenAnimationBuilder<double>(
+                          tween: Tween(begin: 0.0, end: 1.0),
+                          duration: const Duration(milliseconds: 420),
+                          curve: Curves.easeOut,
+                          builder: (_, v, child) => Opacity(
+                            opacity: v,
+                            child: Transform.translate(
+                              offset: Offset(0, 24 * (1 - v)),
+                              child: child,
+                            ),
+                          ),
+                          child: card,
+                        );
+                      },
+                    ),
+            ),
+          ],
         );
       },
     );
   }
 }
 
+class _FilterBar extends StatelessWidget {
+  final _Filter current;
+  final ValueChanged<_Filter> onChanged;
+  const _FilterBar({required this.current, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: Row(
+        children: [
+          _chip('All', _Filter.all),
+          const SizedBox(width: 8),
+          _chip('Suspicious+', _Filter.suspicious),
+          const SizedBox(width: 8),
+          _chip('Reported', _Filter.reported),
+        ],
+      ),
+    );
+  }
+
+  Widget _chip(String label, _Filter value) => FilterChip(
+        label: Text(label),
+        selected: current == value,
+        onSelected: (_) => onChanged(value),
+        visualDensity: VisualDensity.compact,
+      );
+}
+
+class _EmptyState extends StatelessWidget {
+  final _Filter filter;
+  const _EmptyState({required this.filter});
+
+  @override
+  Widget build(BuildContext context) {
+    final (icon, title, body) = switch (filter) {
+      _Filter.suspicious => (
+          Icons.check_circle_outline,
+          'No suspicious messages',
+          'No medium-risk or higher messages scanned yet.',
+        ),
+      _Filter.reported => (
+          Icons.flag_outlined,
+          'No reports sent',
+          'Use the report button on a scan to flag scams to the network.',
+        ),
+      _Filter.all => (
+          Icons.shield_outlined,
+          'No messages scanned yet',
+          'Incoming SMS will appear here automatically, or use the Simulate tab '
+              'to inject a test message.',
+        ),
+    };
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 72,
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.4)),
+            const SizedBox(height: 16),
+            Text(title,
+                style: Theme.of(context).textTheme.titleMedium,
+                textAlign: TextAlign.center),
+            const SizedBox(height: 8),
+            Text(body,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _ScanCard extends StatelessWidget {
   final Scan scan;
-  const _ScanCard({required this.scan});
+  const _ScanCard({super.key, required this.scan});
 
   @override
   Widget build(BuildContext context) {
@@ -61,11 +177,10 @@ class _ScanCard extends StatelessWidget {
               style: const TextStyle(
                   color: Colors.white, fontWeight: FontWeight.bold)),
         ),
-        title: Text(scan.text,
-            maxLines: 2, overflow: TextOverflow.ellipsis),
+        title: Text(scan.text, maxLines: 2, overflow: TextOverflow.ellipsis),
         subtitle: Text(
             '${classificationLabel(label)} · ${scan.sender}'
-            '${scan.offline ? ' · cloud offline, local result' : ''}'
+            '${scan.offline ? ' · cloud offline' : ''}'
             '${scan.source == 'simulated' ? ' · simulated' : ''}'),
         onTap: () => _showDetail(context),
       ),
@@ -82,6 +197,8 @@ class _ScanCard extends StatelessWidget {
   }
 }
 
+// ── Scan detail sheet ────────────────────────────────────────────────────────
+
 class _ScanDetail extends StatelessWidget {
   final Scan scan;
   const _ScanDetail({required this.scan});
@@ -91,41 +208,31 @@ class _ScanDetail extends StatelessWidget {
     final r = scan.result;
     final label = r?.classification ?? (scan.offline ? 'OFFLINE' : 'PENDING');
     final color = classificationColor(label);
+    final score = r?.riskScore ?? scan.localScore;
 
     return DraggableScrollableSheet(
       expand: false,
-      initialChildSize: 0.65,
+      initialChildSize: 0.7,
       builder: (context, controller) => ListView(
         controller: controller,
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
         children: [
-          Row(children: [
-            CircleAvatar(
-              radius: 26,
-              backgroundColor: color,
-              child: Text('${r?.riskScore ?? scan.localScore}',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(classificationLabel(label),
-                      style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: color)),
-                  if (r != null)
-                    Text('ML confidence ${(r.mlConfidence * 100).toStringAsFixed(0)}%'
-                        ' · rules ${r.ruleSubScore}/100'),
-                ],
+          // Risk gauge
+          Center(child: _RiskGauge(score: score, color: color)),
+          Center(
+            child: Text(classificationLabel(label),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color)),
+          ),
+          if (r != null)
+            Center(
+              child: Text(
+                'ML ${(r.mlConfidence * 100).toStringAsFixed(0)}% · rules ${r.ruleSubScore}/100',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
-          ]),
           const SizedBox(height: 16),
           Text(scan.text),
           const Divider(height: 32),
@@ -147,7 +254,7 @@ class _ScanDetail extends StatelessWidget {
                 padding: EdgeInsets.only(bottom: 8),
                 child: Text(
                     'Cloud scoring is temporarily offline — showing local '
-                    'heuristic checks only (results may be less accurate).',
+                    'heuristic checks only.',
                     style: TextStyle(fontStyle: FontStyle.italic)),
               ),
             ...scan.localFlags.map((f) => ListTile(
@@ -158,7 +265,7 @@ class _ScanDetail extends StatelessWidget {
                 )),
           ],
           if (r != null) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             Text('Model ${r.modelVersion}',
                 style: Theme.of(context).textTheme.bodySmall),
           ],
@@ -203,4 +310,72 @@ class _ScanDetail extends StatelessWidget {
               : 'Could not submit report — check your connection')));
     }
   }
+}
+
+// ── Animated risk gauge ───────────────────────────────────────────────────────
+
+class _RiskGauge extends StatelessWidget {
+  final int score;
+  final Color color;
+  const _RiskGauge({required this.score, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: score / 100),
+      duration: const Duration(milliseconds: 900),
+      curve: Curves.easeOut,
+      builder: (_, value, __) => CustomPaint(
+        size: const Size(160, 96),
+        painter: _GaugePainter(value: value, color: color,
+            background: Theme.of(context).colorScheme.surfaceContainerHighest),
+      ),
+    );
+  }
+}
+
+class _GaugePainter extends CustomPainter {
+  final double value;
+  final Color color;
+  final Color background;
+  _GaugePainter({required this.value, required this.color, required this.background});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final cy = size.height * 0.92;
+    final r = size.width * 0.44;
+    final rect = Rect.fromCircle(center: Offset(cx, cy), radius: r);
+    const strokeW = 12.0;
+
+    canvas.drawArc(rect, pi, pi, false,
+        Paint()
+          ..color = background
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = strokeW
+          ..strokeCap = StrokeCap.round);
+
+    if (value > 0) {
+      canvas.drawArc(rect, pi, pi * value, false,
+          Paint()
+            ..color = color
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = strokeW
+            ..strokeCap = StrokeCap.round);
+    }
+
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '${(value * 100).round()}',
+        style: TextStyle(
+            color: color, fontSize: 26, fontWeight: FontWeight.bold),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    tp.paint(canvas, Offset(cx - tp.width / 2, cy - tp.height - 6));
+  }
+
+  @override
+  bool shouldRepaint(_GaugePainter old) =>
+      old.value != value || old.color != color;
 }

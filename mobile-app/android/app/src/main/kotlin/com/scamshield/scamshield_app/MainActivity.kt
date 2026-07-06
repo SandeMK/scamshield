@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
@@ -22,13 +23,18 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun requestSmsPermissionIfNeeded() {
+        val perms = mutableListOf<String>()
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECEIVE_SMS)
             != PackageManager.PERMISSION_GRANTED
-        ) {
-            ActivityCompat.requestPermissions(
-                this, arrayOf(Manifest.permission.RECEIVE_SMS), 100
-            )
-        }
+        ) perms.add(Manifest.permission.RECEIVE_SMS)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+            != PackageManager.PERMISSION_GRANTED
+        ) perms.add(Manifest.permission.POST_NOTIFICATIONS)
+
+        if (perms.isNotEmpty())
+            ActivityCompat.requestPermissions(this, perms.toTypedArray(), 100)
     }
 
     private fun promptBatteryOptimizationOnce() {

@@ -41,7 +41,23 @@ class DashboardScreen extends StatelessWidget {
                 style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 12),
             if (total == 0)
-              const Text('No scans yet — analyze a message first.')
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 32),
+                child: Column(
+                  children: [
+                    Icon(Icons.insights_outlined, size: 64,
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.35)),
+                    const SizedBox(height: 12),
+                    Text('No data yet',
+                        style: Theme.of(context).textTheme.titleMedium),
+                    const SizedBox(height: 6),
+                    Text('Scan a message on the Scans tab to see stats here.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                  ],
+                ),
+              )
             else
               ...byClass.entries.map((e) => Padding(
                     padding: const EdgeInsets.symmetric(vertical: 4),

@@ -3,20 +3,40 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/home_screen.dart';
+import 'screens/permission_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/simulator_screen.dart';
 import 'services/scan_store.dart';
 import 'services/sms_channel.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ScamShieldApp());
+  final prefs = await SharedPreferences.getInstance();
+  final firstLaunch = prefs.getBool('permission_explained') != true;
+  runApp(ScamShieldApp(firstLaunch: firstLaunch));
 }
 
-class ScamShieldApp extends StatelessWidget {
-  const ScamShieldApp({super.key});
+class ScamShieldApp extends StatefulWidget {
+  final bool firstLaunch;
+  const ScamShieldApp({super.key, required this.firstLaunch});
+
+  @override
+  State<ScamShieldApp> createState() => _ScamShieldAppState();
+}
+
+class _ScamShieldAppState extends State<ScamShieldApp> {
+  late bool _showPermission;
+
+  @override
+  void initState() {
+    super.initState();
+    _showPermission = widget.firstLaunch;
+  }
+
+  void _onPermissionDone() => setState(() => _showPermission = false);
 
   @override
   Widget build(BuildContext context) {
@@ -26,7 +46,17 @@ class ScamShieldApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B5E20)),
         useMaterial3: true,
       ),
-      home: const RootScaffold(),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF1B5E20),
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+      ),
+      themeMode: ThemeMode.light,
+      home: _showPermission
+          ? PermissionScreen(onDone: _onPermissionDone)
+          : const RootScaffold(),
     );
   }
 }
@@ -45,10 +75,9 @@ class _RootScaffoldState extends State<RootScaffold> {
   void initState() {
     super.initState();
     ScanStore.instance.load();
-    // Real incoming SMS via the Android platform channel (FR-01).
     _smsSub = SmsChannel.stream().listen(
       (sms) => ScanStore.instance.process(sms.body, sms.sender, 'sms'),
-      onError: (_) {}, // permission denied or unsupported: simulator still works
+      onError: (_) {},
     );
   }
 
