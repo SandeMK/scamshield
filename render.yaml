@@ -8,6 +8,7 @@ services:
     plan: free
     dockerfilePath: ./api/Dockerfile
     dockerContext: .
+    port: 8080
     healthCheckPath: /api/v1/health
     envVars:
       - key: API_KEY
