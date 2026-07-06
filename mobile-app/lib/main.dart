@@ -2,8 +2,10 @@
 library;
 
 import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'screens/dashboard_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/permission_screen.dart';
@@ -41,6 +43,7 @@ class _ScamShieldAppState extends State<ScamShieldApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      debugShowCheckedModeBanner: false,
       title: 'ScamShield',
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1B5E20)),
@@ -103,10 +106,14 @@ class _RootScaffoldState extends State<RootScaffold> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.shield_outlined), label: 'Scans'),
-          NavigationDestination(icon: Icon(Icons.science_outlined), label: 'Simulate'),
-          NavigationDestination(icon: Icon(Icons.insights_outlined), label: 'Dashboard'),
-          NavigationDestination(icon: Icon(Icons.settings_outlined), label: 'Settings'),
+          NavigationDestination(
+              icon: Icon(Icons.shield_outlined), label: 'Scans'),
+          NavigationDestination(
+              icon: Icon(Icons.science_outlined), label: 'Simulate'),
+          NavigationDestination(
+              icon: Icon(Icons.insights_outlined), label: 'Dashboard'),
+          NavigationDestination(
+              icon: Icon(Icons.settings_outlined), label: 'Settings'),
         ],
       ),
     );
