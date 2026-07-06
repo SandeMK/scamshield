@@ -43,15 +43,83 @@ database fed daily by URLhaus/OpenPhish and instantly by user reports.
 | Explanation reason codes | ≥ 3 per result | Guaranteed by design |
 | Scoring response time | < 2 s | ~3 ms locally (p50 1.1 ms) |
 
-## Quick start (ML component)
+## Running the system
 
+### 0. First-time setup
 ```bash
 git clone https://github.com/SandeMK/scamshield.git
-cd scamshield/ml
-pip install -r requirements.txt
-python train.py    # auto-downloads dataset, trains, evaluates, saves model
-python score.py    # demo on realistic SA smishing samples
+cd scamshield
+pip install -r api/requirements.txt      # covers ml/ + api/ + tests
+pip install -r ingestion/requirements.txt
 ```
+
+### 1. Scoring API (start this first — everything talks to it)
+```bash
+cd api
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+- Swagger UI: http://localhost:8000/docs · health: http://localhost:8000/api/v1/health
+- Dev API key: `demo-key` (override with env `API_KEY`; admin: `ADMIN_KEY`)
+- To enable shared threat-intel lookups and report propagation, set env
+  vars **before** starting:
+  ```bash
+  export SUPABASE_URL=https://<project-id>.supabase.co
+  export SUPABASE_SERVICE_KEY=<sb_secret_...>
+  ```
+  Without them the API runs with a stub intel client (scoring still works).
+
+### 2. Mobile app
+```bash
+cd mobile-app
+./setup.sh                 # first time only: flutter create + install source
+cd app && flutter run      # emulator running or device connected
+```
+- Emulator: default Base URL `http://10.0.2.2:8000` works as-is.
+- Physical device: in the app's Settings tab set Base URL to your
+  machine's LAN IP, e.g. `http://192.168.1.23:8000`
+  (find it: `ipconfig getifaddr en0` on macOS, `ipconfig` on Windows);
+  phone and machine must be on the same Wi-Fi.
+- Requires Flutter >= 3.22.
+
+### 3. ML: retrain / evaluate the model
+```bash
+cd ml
+python train.py    # auto-downloads dataset, 3-model CV selection, saves model.joblib
+python score.py    # demo scoring on realistic SA smishing samples
+```
+Retrain whenever your local scikit-learn version differs from the one that
+produced the committed `model.joblib` (fixes InconsistentVersionWarning).
+
+### 4. Fintech interoperability demo (API must be running)
+```bash
+python fintech-client/client.py                          # against localhost
+python fintech-client/client.py --base-url https://<deployed-host> --api-key <key>
+```
+
+### 5. Threat feed ingestion
+Runs automatically daily via GitHub Actions (04:00 UTC), or trigger manually:
+- GitHub -> Actions -> "Threat Feed Ingestion" -> Run workflow, or
+- `curl -X POST -H "X-Admin-Key: <admin-key>" <api-host>/api/v1/intel/ingest`, or
+- locally: `SUPABASE_URL=... SUPABASE_SERVICE_KEY=... python ingestion/ingest.py`
+
+### 6. Tests
+```bash
+(cd ml && python -m pytest tests/ -v)         # detection engine
+(cd api && python -m pytest tests/ -v)        # API contract + auth
+(cd ingestion && python -m pytest tests/ -v)  # normalization + hashing
+```
+
+### 7. Performance measurements (§14.6)
+```bash
+python perf/latency_test.py --base-url http://localhost:8000       # NFR-01
+python perf/propagation_test.py --base-url http://localhost:8000   # NFR-07, needs Supabase env
+```
+
+### 8. Deploy to Render (free tier)
+Render dashboard -> New -> Blueprint -> select this repo (`render.yaml`
+auto-configures) -> set env values: `API_KEY`, `ADMIN_KEY`, `SUPABASE_URL`,
+`SUPABASE_SERVICE_KEY`. Then set repo variable `API_BASE_URL` so the
+keep-alive workflow prevents free-tier cold starts.
 
 ## Database note (design deviation)
 
