@@ -9,5 +9,5 @@ pubspec.lock
 android/.gradle/
 android/local.properties
 
-# Generated setup output (entire app/ subdir from old setup.sh, if present)
-app/
+# Generated setup output (nested app/ project from old setup.sh, root only)
+/app/

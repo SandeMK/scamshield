@@ -8,10 +8,13 @@ library;
 
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import 'api_client.dart';
 import 'local_rules.dart';
+
+const _notifyChannel = MethodChannel('scamshield/notify');
 
 class ScanStore extends ChangeNotifier {
   ScanStore._();
@@ -67,7 +70,19 @@ class ScanStore extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
+    _maybePostAlert(scan);
     return scan;
+  }
+
+  void _maybePostAlert(Scan scan) {
+    final c = scan.result?.classification;
+    if (c != 'HIGH_RISK' && c != 'CRITICAL') return;
+    final label = c == 'CRITICAL' ? 'CRITICAL scam' : 'High-risk message';
+    final preview = scan.text.length > 60 ? '${scan.text.substring(0, 60)}…' : scan.text;
+    _notifyChannel.invokeMethod('alert', {
+      'title': '$label from ${scan.sender}',
+      'body': preview,
+    }).catchError((_) {}); // non-fatal if service not running
   }
 
   Future<bool> report(Scan scan, String reportType) async {
