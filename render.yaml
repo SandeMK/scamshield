@@ -1,0 +1,20 @@
+# Render Blueprint: deploy the ScamShield API on the free tier.
+# In Render: New -> Blueprint -> select this repo. Set the env values when
+# prompted (they are marked sync:false so they are never stored in git).
+services:
+  - type: web
+    name: scamshield-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: API_KEY
+        sync: false
+      - key: ADMIN_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false

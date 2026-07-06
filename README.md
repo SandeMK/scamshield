@@ -15,25 +15,14 @@ across all users through a cloud threat-intelligence network.
 
 ## Architecture
 
-```
-┌─────────────────┐   REST    ┌──────────────────────┐
-│  Android App    │──────────▶│  Cloud Scoring API   │
-│  (SMS listener, │◀──────────│  (FastAPI)           │
-│  local rules,   │  score +  │  rules + ML hybrid   │
-│  dashboard)     │  reasons  └──────┬───────────────┘
-└─────────────────┘                  │
-        │ report scams               ▼
-        ▼                    ┌──────────────────────┐
-┌─────────────────┐          │ Threat Intel DB      │
-│ Mock Fintech    │─────────▶│ (Supabase/Postgres,  │
-│ API Client      │   REST   │ hashed indicators)   │
-└─────────────────┘          └──────▲───────────────┘
-                                    │ daily ingestion
-                     ┌──────────────┴───────┐
-                     │ Public feeds:        │
-                     │ URLhaus, OpenPhish   │
-                     └──────────────────────┘
-```
+**Full visual documentation with diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
+(system overview, scoring sequence, intelligence propagation, database ER
+diagram, and app structure — all rendered natively by GitHub.)
+
+In one sentence: a Flutter app captures SMS, runs instant local checks, and
+sends features to a FastAPI service that fuses rule-based and ML sub-scores
+into an explained 0-100 risk score, enriched by a shared Supabase threat
+database fed daily by URLhaus/OpenPhish and instantly by user reports.
 
 ## Repository structure → proposal deliverables
 

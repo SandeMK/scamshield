@@ -1,0 +1,16 @@
+name: Keep API Awake
+# Render free instances sleep after ~15 min idle; a cold start takes ~30-60 s,
+# which would blow the 2 s demo latency. This ping keeps it warm.
+# Set the repo variable API_BASE_URL after deploying (Settings -> Secrets and
+# variables -> Actions -> Variables). Disable this workflow after the demo.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    if: vars.API_BASE_URL != ''
+    steps:
+      - name: Ping health endpoint
+        run: curl -sf "${{ vars.API_BASE_URL }}/api/v1/health" && echo OK

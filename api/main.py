@@ -140,6 +140,11 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
                 "text_hash": report.get("text_hash"),
                 "url_hash": report.get("url_hash"),
             }).raise_for_status()
+            batch = report.get("indicator_batch") or []
+            if batch:
+                self._client.post(f"{self._rest}/rpc/ingest_indicators",
+                                  json={"batch": batch}).raise_for_status()
+                log.info("report ingested %d indicators", len(batch))
         except Exception as exc:
             log.warning("report persist failed: %s", exc)
 
@@ -260,8 +265,34 @@ def report(req: ReportRequest):
         "url_hash": hash_indicator(req.url) if req.url else None,
         "received_at": time.time(),
     }
+
+    # NFR-07 / FR-06: confirmed-scam reports become shared indicators so
+    # they influence scoring for all users (target: within 30 s).
+    if req.report_type == "scam":
+        from urllib.parse import urlparse
+        urls = set(extract_rules(req.text).urls if req.text else [])
+        if req.url:
+            urls.add(req.url)
+        batch = []
+        for u in urls:
+            batch.append({"indicator_hash": hash_indicator(u),
+                          "indicator_type": "url",
+                          "source": "user_report",
+                          "threat_tag": "user_reported",
+                          "reputation": 70})
+            netloc = urlparse(u if "://" in u else "http://" + u).netloc
+            domain = netloc.split(":")[0]
+            if domain:
+                batch.append({"indicator_hash": hash_indicator(domain),
+                              "indicator_type": "domain",
+                              "source": "user_report",
+                              "threat_tag": "user_reported",
+                              "reputation": 50})
+        payload["indicator_batch"] = batch
+
     intel.record_report(payload)
     _stats["reports_received"] += 1
+    payload.pop("indicator_batch", None)  # keep the response lean
     return {"status": "received", "report": payload}
 
 
