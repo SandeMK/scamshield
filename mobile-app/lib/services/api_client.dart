@@ -2,12 +2,15 @@
 library;
 
 import 'dart:convert';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../models.dart';
 
 class ApiClient {
-  static const defaultBaseUrl = 'http://10.0.2.2:8000'; // emulator -> host
+  static const defaultBaseUrl =
+      'https://scamshield-api-4ywt.onrender.com'; // emulator -> host
   static const defaultApiKey = 'demo-key';
 
   Future<(String, String)> _config() async {
