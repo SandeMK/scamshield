@@ -70,6 +70,25 @@ App fully built and deployed. Assignment 2 submitted 30 June; demo later.
   in GitHub Settings → Secrets and variables → Actions → Variables.
   render.yaml has port: 8080 fix committed.
 
+### TODO (mobile-app, Claude Code): Share-to-ScamShield
+Any-channel checking (WhatsApp, email, Telegram...) via Android share
+sheet, without interception — user-consented, ToS-clean:
+- AndroidManifest: intent-filter on MainActivity for ACTION_SEND with
+  mimeType text/plain (and ACTION_PROCESS_TEXT if easy).
+- Forward shared text to Dart via the existing channel pattern (e.g. a
+  'scamshield/share' MethodChannel handled in MainActivity onCreate +
+  onNewIntent; remember the activity uses the cached engine).
+- Pipeline: ScanStore.process(text, sender: 'SHARED', source: 'shared');
+  open on Scans tab showing the new card. Show 'shared' chip on the card
+  (like 'simulated').
+- No backend changes needed: /api/v1/score/sms already scores arbitrary
+  text + URLs.
+- Also update defaultApiKey in api_client.dart to 'scamshield-api-key'
+  (matches Render env) and fix the stale '// emulator -> host' comment.
+- Repo cleanup while in there: gitignore + git rm -r --cached .idea/;
+  remove superseded mobile-app/platform/, setup.sh, and old app/ dir if
+  truly unused; update mobile-app/README.md to the new structure.
+
 ### TODO (user)
 1. Confirm Render port fix deployed: curl .../api/v1/health returns JSON.
 2. Set API_BASE_URL repo variable on GitHub for keep-alive workflow.
@@ -77,6 +96,16 @@ App fully built and deployed. Assignment 2 submitted 30 June; demo later.
    record numbers for report §14.6.
 4. Take screenshots of 4 tabs + CRITICAL detail sheet → docs/screenshots/
    referenced from mobile-app/README.md.
+
+### Report notes — channel scope (WhatsApp/email question)
+Proposal + Assignment 2 are deliberately SMS-only. Defense: Android
+exposes SMS via an official broadcast API; WhatsApp is E2E-encrypted with
+no third-party access API (only fragile, ToS-violating accessibility or
+notification scraping, contradicting privacy-by-design); email phishing
+is a separately mature problem. SA impersonation scams concentrate on SMS
+because it lacks platform filtering. Future work: the scoring API is
+channel-agnostic (text + URLs), so Share-to-ScamShield extends coverage
+to any app with user consent — implemented/being implemented above.
 
 ### Report notes
 - Legitimate bank/OTP messages can score MEDIUM_RISK (shared vocabulary) —
