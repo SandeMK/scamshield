@@ -66,15 +66,35 @@ Assignment 2 was submitted 30 June; demo is later — no immediate deadline.
      (Settings -> Battery -> app -> Unrestricted); One UI kills FGS
      apps otherwise.
    - High-risk results while backgrounded should post a notification.
-2. TODO (mobile-app, Claude Code): widget tests (§14.2), integration
-   test (§14.3).
-3. TODO (user + chat): deploy API to Render free tier — render.yaml is
+2. TODO (mobile-app, Claude Code): UI polish pass. Priority order:
+   a. Wire branding per mobile-app/branding/README.md: launcher icon via
+      flutter_launcher_icons + android:label="ScamShield" (patch label in
+      setup.sh so regeneration keeps it).
+   b. Splash screen: flutter_native_splash, background #1B5E20, shield
+      from branding/ (use icon-foreground.png).
+   c. First-launch permission explainer screen BEFORE the Android SMS
+      permission dialog: brief privacy-by-design copy (messages scanned,
+      only SHA-256 hashes ever stored server-side), then request.
+   d. Animated risk gauge in the scan detail sheet: 0-100 arc sweeping to
+      the score, coloured by classification band (util.dart colours).
+   e. Empty-state visuals for Scans and Dashboard tabs (shield icon +
+      friendly copy) replacing plain text.
+   f. Dark mode: darkTheme with the same seed colour (#1B5E20).
+   g. Filter chips on Scans tab: All / Suspicious+ (MEDIUM_RISK and up) /
+      Reported.
+   h. Subtle entrance animation for new scan cards.
+   Later / future work: onboarding carousel; isiZulu localization
+   (mention in report's Future Work if skipped).
+3. TODO (mobile-app, Claude Code): widget tests (§14.2), integration
+   test (§14.3) — good targets: gauge/card colour per classification,
+   explanation list rendering, report button state change.
+4. TODO (user + chat): deploy API to Render free tier — render.yaml is
    ready; then set repo variable API_BASE_URL for the keep-alive workflow.
-4. TODO: run perf/latency_test.py and perf/propagation_test.py against
+5. TODO: run perf/latency_test.py and perf/propagation_test.py against
    the deployed URL; record numbers for the report (§14.6).
-5. TODO (user): docs/screenshots/ of the four tabs + a CRITICAL detail
+6. TODO (user): docs/screenshots/ of the four tabs + a CRITICAL detail
    sheet, referenced from mobile-app/README.md.
-6. Report notes: (a) legitimate bank/OTP messages can score MEDIUM_RISK
+7. Report notes: (a) legitimate bank/OTP messages can score MEDIUM_RISK
    (shared vocabulary) — finding, mitigated by tiered actions +
    false-positive reporting; (b) foreground-service pilot approach vs
    manifest-receiver production approach is a good trade-off discussion.
