@@ -1,0 +1,81 @@
+@startuml
+skinparam backgroundColor white
+skinparam ActivityBorderColor #1B4F72
+skinparam ActivityBackgroundColor #EAF1FA
+skinparam ActivityFontColor #14213D
+skinparam ActivityDiamondBorderColor #1B4F72
+skinparam ActivityDiamondBackgroundColor white
+skinparam ActivityDiamondFontColor #14213D
+skinparam ArrowColor #1B4F72
+skinparam PartitionBorderColor #1B4F72
+skinparam PartitionBackgroundColor #EEF3FA
+skinparam ActivityFontSize 12
+skinparam shadowing false
+
+|ScamShield Mobile App|
+start
+:SMS received; extract text,
+sender and URLs; run
+LocalRuleEngine checks;
+if (Local score >= 90?) then (yes)
+  :Show instant CRITICAL
+  warning (FR-06);
+else (no)
+endif
+:POST /api/v1/score/sms
+over HTTPS with X-API-Key;
+if (Cloud API reachable?) then (no)
+  :Retain local result,
+  mark "cloud offline"
+  (NFR-02);
+  stop
+else (yes)
+endif
+
+|Cloud Threat Scoring API|
+:Validate payload and API key;
+:RuleEngine produces
+rule_sub_score + reason codes;
+:MLClassifier (TF-IDF + Logistic
+Regression) returns ml_confidence;
+note right
+  Emerging-technology step
+  (ET-01, ET-02)
+end note
+:HybridScorer fuses
+0.6 x ML + 0.4 x rules;
+
+|Threat Intelligence Database|
+:Look up SHA-256 hash
+of each extracted URL;
+
+|Cloud Threat Scoring API|
+if (Indicator match?) then (exact URL)
+  :Floor risk_score at 90,
+  add INTEL_MATCH code;
+elseif (domain only) then
+  :Add 15 to risk_score,
+  add INTEL_MATCH code;
+else (no match)
+  :Keep fused score;
+endif
+:Apply critical override, assign
+classification, guarantee >= 3
+codes, return scoring payload (FR-03);
+
+|ScamShield Mobile App|
+:Replace provisional card with
+final colour-coded result;
+if (Final classification == CRITICAL\nand trusted contact saved?) then (yes)
+  :Send automatic SMS alert to
+  trusted contact, no tap
+  required (FR-09);
+else (no)
+endif
+if (User reports the message?) then (yes)
+  :POST /api/v1/report; hash and
+  upsert indicators (FR-07);
+else (no)
+endif
+stop
+@enduml
