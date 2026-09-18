@@ -54,7 +54,7 @@ class Scan {
   final String text;
   final String sender;
   final DateTime timestamp;
-  final String source; // 'sms' | 'simulated'
+  final String source; // 'sms' | 'simulated' | 'shared'
   ScoreResult? result;
   bool offline; // NFR-08: cloud unreachable, local heuristics only
   int localScore; // FR-10 immediate local heuristic score

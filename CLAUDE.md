@@ -33,7 +33,7 @@ FR-xx, NFR-xx, ET-xx) are the authoritative spec for contracts and naming.
 - Tests: `python -m pytest tests/` inside ml/, api/, ingestion/ (17 total)
 - Retrain: `cd ml && python train.py` (do this if sklearn version changes;
   model.joblib is committed and version-stamped, ET-05)
-- App: `cd mobile-app && ./setup.sh && flutter run`
+- App: `cd mobile-app && flutter pub get && flutter run`
 - Fintech demo: `python fintech-client/client.py --base-url <url>`
 
 ## Conventions & decisions (do not silently change)
@@ -69,25 +69,16 @@ App fully built and deployed. Assignment 2 submitted 30 June; demo later.
   set repo variable API_BASE_URL=https://scamshield-api-4ywt.onrender.com
   in GitHub Settings → Secrets and variables → Actions → Variables.
   render.yaml has port: 8080 fix committed.
-
-### TODO (mobile-app, Claude Code): Share-to-ScamShield
-Any-channel checking (WhatsApp, email, Telegram...) via Android share
-sheet, without interception — user-consented, ToS-clean:
-- AndroidManifest: intent-filter on MainActivity for ACTION_SEND with
-  mimeType text/plain (and ACTION_PROCESS_TEXT if easy).
-- Forward shared text to Dart via the existing channel pattern (e.g. a
-  'scamshield/share' MethodChannel handled in MainActivity onCreate +
-  onNewIntent; remember the activity uses the cached engine).
-- Pipeline: ScanStore.process(text, sender: 'SHARED', source: 'shared');
-  open on Scans tab showing the new card. Show 'shared' chip on the card
-  (like 'simulated').
-- No backend changes needed: /api/v1/score/sms already scores arbitrary
-  text + URLs.
-- Also update defaultApiKey in api_client.dart to 'scamshield-api-key'
-  (matches Render env) and fix the stale '// emulator -> host' comment.
-- Repo cleanup while in there: gitignore + git rm -r --cached .idea/;
-  remove superseded mobile-app/platform/, setup.sh, and old app/ dir if
-  truly unused; update mobile-app/README.md to the new structure.
+- Share-to-ScamShield (FR-10): any-channel checking (WhatsApp, email,
+  Telegram...) via Android share sheet, user-consented, no interception.
+  AndroidManifest ACTION_SEND + ACTION_PROCESS_TEXT intent-filters on
+  MainActivity; 'scamshield/share' MethodChannel (cold-start pull via
+  onCreate + getInitialText, warm-start push signal via onNewIntent,
+  since the activity uses the cached engine and the Dart isolate is
+  Application-scoped); ScanStore.process(text, 'SHARED', 'shared'), jump
+  to Scans tab, 'shared' tag on the card (like 'simulated'). No backend
+  changes needed. Repo cleanup (gitignore/.idea, setup.sh removal,
+  defaultApiKey, stale comment, mobile-app/README.md) all done.
 
 ### TODO (user)
 1. Confirm Render port fix deployed: curl .../api/v1/health returns JSON.

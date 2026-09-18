@@ -9,8 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 
 class ApiClient {
-  static const defaultBaseUrl =
-      'https://scamshield-api-4ywt.onrender.com'; // emulator -> host
+  static const defaultBaseUrl = 'https://scamshield-api-4ywt.onrender.com';
   static const defaultApiKey = 'scamshield-api-key';
 
   Future<(String, String)> _config() async {

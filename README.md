@@ -28,11 +28,11 @@ database fed daily by URLhaus/OpenPhish and instantly by user reports.
 
 | Folder | Deliverable (proposal §) | Status |
 |---|---|---|
-| [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.956 |
+| [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.942 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
 | [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
-| [`mobile-app/`](mobile-app/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Source complete — build via `mobile-app/setup.sh` |
-| [`fintech-client/`](fintech-client/) | Mock Fintech API Client (§3.2.6) | 🔜 Planned |
+| [`mobile-app/`](mobile-app/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Done — see mobile-app/README.md |
+| [`fintech-client/`](fintech-client/) | Mock Fintech API Client (§3.2.6) | ✅ Done |
 
 ## Key results so far
 
@@ -71,14 +71,16 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 ### 2. Mobile app
 ```bash
 cd mobile-app
-./setup.sh                 # first time only: flutter create + install source
-cd app && flutter run      # emulator running or device connected
+flutter pub get
+flutter run -d <device-id>   # emulator running or device connected
 ```
-- Emulator: default Base URL `http://10.0.2.2:8000` works as-is.
-- Physical device: in the app's Settings tab set Base URL to your
-  machine's LAN IP, e.g. `http://192.168.1.23:8000`
-  (find it: `ipconfig getifaddr en0` on macOS, `ipconfig` on Windows);
-  phone and machine must be on the same Wi-Fi.
+- Default Base URL points at the deployed Render API — no local setup
+  needed to test end-to-end.
+- To point at a local API instead: in the app's Settings tab set Base URL
+  to `http://10.0.2.2:8000` (emulator) or your machine's LAN IP, e.g.
+  `http://192.168.1.23:8000` (physical device; find it: `ipconfig getifaddr
+  en0` on macOS, `ipconfig` on Windows); phone and machine must be on the
+  same Wi-Fi.
 - Requires Flutter >= 3.22.
 
 ### 3. ML: retrain / evaluate the model

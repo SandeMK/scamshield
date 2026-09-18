@@ -181,7 +181,8 @@ class _ScanCard extends StatelessWidget {
         subtitle: Text(
             '${classificationLabel(label)} · ${scan.sender}'
             '${scan.offline ? ' · cloud offline' : ''}'
-            '${scan.source == 'simulated' ? ' · simulated' : ''}'),
+            '${scan.source == 'simulated' ? ' · simulated' : ''}'
+            '${scan.source == 'shared' ? ' · shared' : ''}'),
         onTap: () => _showDetail(context),
       ),
     );
