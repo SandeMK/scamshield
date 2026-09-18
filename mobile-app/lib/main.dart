@@ -12,6 +12,7 @@ import 'screens/permission_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/simulator_screen.dart';
 import 'services/scan_store.dart';
+import 'services/share_channel.dart';
 import 'services/sms_channel.dart';
 
 void main() async {
@@ -82,6 +83,15 @@ class _RootScaffoldState extends State<RootScaffold> {
       (sms) => ScanStore.instance.process(sms.body, sms.sender, 'sms'),
       onError: (_) {},
     );
+    ShareChannel.listenForSignal(_pullShared);
+    _pullShared();
+  }
+
+  Future<void> _pullShared() async {
+    final text = await ShareChannel.pullText();
+    if (text == null || text.isEmpty) return;
+    await ScanStore.instance.process(text, 'SHARED', 'shared');
+    if (mounted) setState(() => _index = 0);
   }
 
   @override

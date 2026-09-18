@@ -5,15 +5,58 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.engine.FlutterEngineCache
+import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
     override fun getCachedEngineId(): String = ScamShieldApp.ENGINE_ID
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        handleShareIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleShareIntent(intent)
+    }
+
+    // Some senders (e.g. Messages, due to this Activity's empty taskAffinity)
+    // launch a fresh Activity instance — onCreate, not onNewIntent — even
+    // though the process and its Dart isolate are already warm and will
+    // never call initState() again. So onCreate must push too, not just
+    // stash the text for a pull that may never happen.
+    private fun handleShareIntent(intent: Intent?) {
+        val text = extractShareText(intent) ?: return
+        ScamShieldApp.pendingShareText = text
+        FlutterEngineCache.getInstance().get(ScamShieldApp.ENGINE_ID)?.let { engine ->
+            MethodChannel(engine.dartExecutor.binaryMessenger, ScamShieldApp.SHARE_CHANNEL)
+                .invokeMethod("onShare", null)
+        }
+    }
+
+    private fun extractShareText(intent: Intent?): String? {
+        if (intent == null) return null
+        return when (intent.action) {
+            Intent.ACTION_SEND -> {
+                if (intent.type != "text/plain") return null
+                val text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString() ?: return null
+                val subject = intent.getCharSequenceExtra(Intent.EXTRA_SUBJECT)?.toString()
+                if (!subject.isNullOrBlank()) "$subject\n$text" else text
+            }
+            Intent.ACTION_PROCESS_TEXT ->
+                intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
+            else -> null
+        }
+    }
 
     override fun onResume() {
         super.onResume()

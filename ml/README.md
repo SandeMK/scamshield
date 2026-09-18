@@ -15,13 +15,13 @@ API (Component 2) and is the basis of the reason codes shown in the Android app.
 | Criterion | Target | Achieved |
 |---|---|---|
 | Dataset size | >= 500 samples | 5,572 |
-| F1-score | >= 0.85 | 0.956 (held-out), 0.945 +/- 0.010 (5-fold CV) |
+| F1-score | >= 0.85 | 0.942 (held-out); 5-fold CV model selection: LogReg 0.941 > RF 0.923 > GB 0.915 |
 | Reason codes per result | >= 3 | Always >= 3 (rules + ML fallbacks) |
 
 ## Hybrid scoring formula
-`risk = 100 * (0.7 * ml_probability + 0.3 * rule_score/100)`
+`risk = 100 * (0.6 * ml_probability + 0.4 * rule_score/100)`
 
-Labels: >=80 HIGH_RISK, >=50 SUSPICIOUS, >=20 LOW_RISK, else LIKELY_SAFE.
+Labels: >=90 CRITICAL, >=70 HIGH_RISK, >=40 MEDIUM_RISK, >=20 LOW_RISK, else SAFE.
 
 ## Run it
 ```bash
