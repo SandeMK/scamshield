@@ -12,6 +12,8 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models.dart';
 import 'api_client.dart';
+import 'device_id.dart';
+import 'guardian_channel.dart';
 import 'local_rules.dart';
 
 const _notifyChannel = MethodChannel('scamshield/notify');
@@ -71,6 +73,7 @@ class ScanStore extends ChangeNotifier {
     notifyListeners();
     await _persist();
     _maybePostAlert(scan);
+    _maybeGuardianAlert(scan); // FR-09: fires only on the returned cloud result
     return scan;
   }
 
@@ -85,9 +88,30 @@ class ScanStore extends ChangeNotifier {
     }).catchError((_) {}); // non-fatal if service not running
   }
 
+  /// FR-09 Guardian Alert. Gated on scan.result, which is only ever set from
+  /// the cloud response — never on localScore — so an unreachable API (NFR-02
+  /// offline path) never fires this, matching the activity/sequence diagrams
+  /// where the branch sits after the final colour-coded result.
+  Future<void> _maybeGuardianAlert(Scan scan) async {
+    if (scan.result?.classification != 'CRITICAL') return;
+    final prefs = await SharedPreferences.getInstance();
+    final contact = prefs.getString('guardianContact');
+    if (contact == null || contact.isEmpty) return;
+    final preview =
+        scan.text.length > 80 ? '${scan.text.substring(0, 80)}…' : scan.text;
+    final message = 'ScamShield Guardian Alert: a message received on a '
+        'phone you are the trusted contact for was just classified CRITICAL '
+        '(likely scam). They may need help. Message: "$preview"';
+    try {
+      await GuardianChannel.send(contact, message);
+    } catch (_) {} // never let a channel/permission failure break scoring
+  }
+
   Future<bool> report(Scan scan, String reportType) async {
     try {
-      await api.report(text: scan.text, reportType: reportType);
+      final deviceId = await DeviceId.get();
+      await api.report(
+          text: scan.text, reportType: reportType, deviceId: deviceId);
       scan.reported = true;
       reportsSent += 1;
       notifyListeners();

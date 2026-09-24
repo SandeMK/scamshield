@@ -75,3 +75,82 @@ def test_analytics_summary():
     r = client.get("/api/v1/analytics/summary", headers=KEY)
     assert r.status_code == 200
     assert r.json()["requests_total"] >= 1
+
+
+# --- UC-13 Manage Profile & Notifications (FR-14/15/16) --------------------
+
+def test_profile_requires_api_key():
+    assert client.post("/api/v1/profile", json={"device_id": "dev-1"}).status_code == 401
+
+
+def test_profile_create_and_fetch():
+    r = client.post("/api/v1/profile",
+                    json={"device_id": "dev-1", "display_name": "Thabo"},
+                    headers=KEY)
+    assert r.status_code == 200
+    assert r.json()["display_name"] == "Thabo"
+
+    r = client.get("/api/v1/profile/dev-1", headers=KEY)
+    assert r.status_code == 200
+    assert r.json()["device_id"] == "dev-1"
+
+
+def test_profile_not_found():
+    assert client.get("/api/v1/profile/never-created", headers=KEY).status_code == 404
+
+
+def test_profile_inherits_totals_on_creation():
+    r = client.post("/api/v1/profile",
+                    json={"device_id": "dev-2", "total_scans": 42, "total_reports": 3},
+                    headers=KEY)
+    body = r.json()
+    assert body["total_scans"] == 42
+    assert body["total_reports"] == 3
+
+
+def test_report_increments_profile_total_reports():
+    client.post("/api/v1/profile", json={"device_id": "dev-3"}, headers=KEY)
+    client.post("/api/v1/report",
+               json={"text": SCAM, "report_type": "scam", "device_id": "dev-3"},
+               headers=KEY)
+    profile = client.get("/api/v1/profile/dev-3", headers=KEY).json()
+    assert profile["total_reports"] == 1
+
+
+def test_notification_prefs_update_persists():
+    client.post("/api/v1/profile", json={"device_id": "dev-4"}, headers=KEY)
+    r = client.patch("/api/v1/profile/notifications", json={
+        "device_id": "dev-4",
+        "alert_threshold": "HIGH_RISK",
+        "retroactive_updates": False,
+        "report_outcomes": True,
+        "digest_frequency": "weekly",
+    }, headers=KEY)
+    assert r.status_code == 200
+    assert r.json()["notification_prefs"]["alert_threshold"] == "HIGH_RISK"
+
+
+def test_notification_prefs_requires_existing_profile():
+    r = client.patch("/api/v1/profile/notifications", json={
+        "device_id": "never-created",
+        "alert_threshold": "SAFE",
+        "digest_frequency": "off",
+    }, headers=KEY)
+    assert r.status_code == 404
+
+
+def test_recovery_request_never_reveals_whether_email_exists():
+    r = client.post("/api/v1/profile/recovery/request",
+                    json={"email": "unknown@example.com"}, headers=KEY)
+    assert r.status_code == 200
+
+
+def test_recovery_verify_rejects_wrong_code():
+    client.post("/api/v1/profile", json={"device_id": "dev-5", "email": "thabo@example.com"},
+               headers=KEY)
+    client.post("/api/v1/profile/recovery/request", json={"email": "thabo@example.com"},
+               headers=KEY)
+    r = client.post("/api/v1/profile/recovery/verify", json={
+        "email": "thabo@example.com", "code": "000000", "device_id": "dev-5-new",
+    }, headers=KEY)
+    assert r.status_code == 400

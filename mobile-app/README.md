@@ -6,16 +6,25 @@ scoring, colour-coded Material risk cards, reporting, and the analytics
 dashboard. Android-only scope (NFR-06), sideloaded for the pilot demo.
 
 ## Requirement coverage
+(FR/NFR ids match the current Assignment 2 spec numbering.)
+
 | Req | Where |
 |---|---|
 | FR-01 SMS listening + extraction | `android/.../SmsProtectionService.kt` (FGS EventChannel) + `lib/services/sms_channel.dart` |
 | FR-02 HTTPS transmission | `lib/services/api_client.dart` |
-| FR-04 Colour-coded Material cards | `lib/screens/home_screen.dart`, `lib/util.dart` |
-| FR-05 Report scam / false positive | detail sheet in `home_screen.dart` |
-| FR-08 Analytics dashboard | `lib/screens/dashboard_screen.dart` |
-| FR-10 Immediate local heuristic warning | `lib/services/local_rules.dart` + provisional card |
-| NFR-08 Offline fallback with notice | `lib/services/scan_store.dart` (`offline` flag) |
-| US-02 Explanation codes | detail sheet lists code + detail per entry |
+| FR-03 Explanation codes rendered | detail sheet in `home_screen.dart` lists code + detail per entry |
+| FR-05 Colour-coded Material cards | `lib/screens/home_screen.dart`, `lib/util.dart` |
+| FR-06 Local heuristic pre-check + provisional warning | `lib/services/local_rules.dart` + provisional card |
+| FR-07 Report scam / false positive | detail sheet in `home_screen.dart` |
+| FR-09 Guardian Alert | `lib/services/guardian_channel.dart`, `lib/screens/settings_screen.dart`, `android/.../MainActivity.kt` (permission), `android/.../SmsProtectionService.kt` (send) |
+| FR-10 Share-to-ScamShield | `lib/services/share_channel.dart`, `android/.../MainActivity.kt` |
+| FR-11 Configurable base URL / API key | `lib/screens/settings_screen.dart` |
+| FR-12 Message simulation | `lib/screens/simulator_screen.dart` |
+| FR-13 Analytics dashboard | `lib/screens/dashboard_screen.dart` |
+| FR-14 Profile creation | `lib/screens/settings_screen.dart`, `lib/services/device_id.dart` |
+| FR-15 Notification preferences | `lib/screens/settings_screen.dart` |
+| FR-16 Profile recovery (emailed code) | `lib/screens/settings_screen.dart` |
+| NFR-02 Offline fallback with notice | `lib/services/scan_store.dart` (`offline` flag) |
 
 ## Run (clone-and-run, no setup needed)
 ```bash

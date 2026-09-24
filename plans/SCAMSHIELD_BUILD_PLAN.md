@@ -20,9 +20,37 @@ Same as before: make the running system match `ScamShield_ISJ107V_Assignment2.do
 - **FR-10 (share-sheet) — just pushed, and done properly**: `ACTION_SEND`/`ACTION_PROCESS_TEXT` intent filters, a `scamshield/share` MethodChannel handling both cold-start (`getInitialText`) and warm-start (`onNewIntent`) cases correctly, tagged `'shared'` through the same `ScanStore.process()` path as everything else. No backend changes needed, which checks out — FR-10 was always meant to reuse the existing pipeline.
 - Dashboard (now **FR-13** in the current document — see §3 below on why the numbering moved) — done, shipped as part of `mobile-app/`.
 
-**Not built at all — this is the real remaining-work list, not what the last version of this plan guessed:**
-- **FR-09, Guardian Alert.** No mention anywhere in the repo. This is the one that matters most: it's in the *required ten* in the current document, not an optional extra. Needs: `SEND_SMS` permission flow, a Settings field for the trusted contact number (local storage only — never sent to Supabase), and the `SmsManager.sendTextMessage` call gated on classification == CRITICAL. Nothing here touches the backend.
-- **FR-14/15/16 — profile creation, notification preferences, email recovery.** No `user_profiles` table, no `device_id` column on `reports`, no Settings UI for any of it, no recovery-code endpoint. This is real work on both sides: a Supabase migration plus new API endpoints plus new Settings screens.
+**Built since the last version of this plan:**
+- **FR-09, Guardian Alert — done, mobile-only, no backend changes.** `SEND_SMS`
+  permission requested only when the user opts in from Settings (trusted-
+  contact field + plain-language dialog before the OS prompt), never at
+  first launch. `scamshield/guardian` MethodChannel on `MainActivity` handles
+  the permission check/request (needs an Activity); sending is a new
+  `guardianAlert` case on the existing Service-owned `scamshield/notify`
+  channel (`SmsManager.getDefault().sendMultipartTextMessage`), so it still
+  fires if the app has been swiped away. `ScanStore._maybeGuardianAlert`
+  gates on `scan.result?.classification == 'CRITICAL'` — the field set only
+  from the cloud response — so the NFR-02 offline path and the provisional
+  local warning never trigger it. Trusted contact number is
+  `shared_preferences` key `guardianContact`, local-only, never sent to
+  Supabase.
+- **UC-13 Manage Profile & Notifications (FR-14/15/16) — done, mobile +
+  backend.** `device_id` generated client-side at first use
+  (`lib/services/device_id.dart`), sent with every report regardless of
+  profile. Backend gained `ProfileStore`/`SupabaseProfileStore` (mirrors
+  `ThreatIntelClient`'s stub/live split) and five endpoints: POST
+  `/api/v1/profile`, GET `/api/v1/profile/{device_id}`, PATCH
+  `/api/v1/profile/notifications`, POST `/api/v1/profile/recovery/request`,
+  POST `/api/v1/profile/recovery/verify`. FR-16 recovery rides Supabase
+  Auth's own email-OTP flow (`/auth/v1/otp` + `/auth/v1/verify`) instead of
+  a hand-rolled code table or a new SMTP dependency — still a genuine
+  "6-digit emailed code" per §4, just issued by infrastructure the project
+  already has. Settings screen gained Profile / Notification Preferences /
+  Recover-a-profile sections. Schema migration appended (idempotently) to
+  `ingestion/schema.sql`, **not yet re-applied to the live Supabase DB** —
+  see the new item in §6.
+
+**Not built — nothing left from the graded scope.** What remains is two manual, code-external steps (§6) and the repo's pre-existing TODOs (§6.6, unrelated to FR-09/14/15/16).
 
 ## 3. Something to Reconcile Before Building Further — Documentation Has Drifted From the Spec
 
@@ -50,17 +78,12 @@ Do this reconciliation as part of implementing §2's remaining work, not as a se
 
 ## 6. Remaining Work — Concrete, in the Order I'd Do It
 
-1. **Guardian Alert (FR-09)** — highest priority, it's in the graded top ten and doesn't exist yet.
-   - Mobile: `SEND_SMS` permission request (with the plain-language justification dialog), Settings field for the trusted contact number (local storage — `shared_preferences` or secure storage, matching the pattern already used for other local-only settings), wire the send into wherever the final CRITICAL classification is handled.
-   - No backend or Supabase changes.
-   - Test: confirm it fires only on the *returned cloud* classification, not the provisional local one (matches the activity/sequence diagrams — the branch sits after "final colour-coded result," not after the instant local warning).
-2. **`user_profiles` + `device_id` migration** — needed before FR-14/15/16 can exist.
-   - Add `device_id` column to `reports` (nullable-safe migration on the live table).
-   - Create `user_profiles` table exactly as specified in Section 5.1: `user_id`, `device_id`, `display_name` (nullable), `email` (nullable, unique), `notification_prefs` (JSONB), `total_scans`, `total_reports`, `created_at`, `last_active`. Row-level security matching the existing `indicators`/`reports` policy pattern.
-3. **FR-14 (profile creation) + FR-15 (notification prefs)** — Settings UI + two new API endpoints (create/update profile, update notification prefs).
-4. **FR-16 (recovery)** — lowest priority of the new work by the document's own framing. Emailed 6-digit code, endpoint to request it, endpoint to verify and re-link `device_id`.
-5. **Documentation reconciliation (§3)** — fold into the commits above, not a separate pass.
-6. **The repo's own outstanding TODOs** (from `CLAUDE.md`, unrelated to this session's new FRs, but still open as of the last push):
+1. ~~Guardian Alert (FR-09)~~ — **done**, see §2.
+2. ~~`user_profiles` + `device_id` migration, FR-14, FR-15, FR-16~~ — **done**, see §2. Two manual steps are still needed before the deployed system actually has this behavior (code alone can't do either):
+   - **Re-run `ingestion/schema.sql` in the Supabase SQL editor.** Every new statement is idempotent (`if not exists` / `create or replace`), so re-running the whole file is safe. Until this runs, the live DB has no `device_id` column, no `user_profiles` table, and no `increment_profile_reports` function — the new endpoints will 500 or fail silently against the deployed Supabase project.
+   - **Supabase dashboard → Authentication → Email Templates → Magic Link: add `{{ .Token }}` to the body.** Without it, the FR-16 recovery email is a magic-link button with no visible 6-digit code, and there's nothing for the user to type into the verify step. This is the one piece of the Supabase-Auth-OTP approach (§4) that can't be done from code.
+3. **Documentation reconciliation (§3)** — done in the same commits.
+4. **The repo's own outstanding TODOs** (from `CLAUDE.md`, unrelated to FR-09/14/15/16, still open as of the last push):
    - Confirm the Render port fix actually deployed (`curl .../api/v1/health`).
    - Set the `API_BASE_URL` repo variable so the keep-alive workflow can run.
    - Run `perf/latency_test.py` and `perf/propagation_test.py` against the live Render URL and record the numbers for the report.
@@ -83,4 +106,4 @@ Do this reconciliation as part of implementing §2's remaining work, not as a se
 
 ## 9. Quick-Start Prompt for the Next Session
 
-> Clone `github.com/SandeMK/scamshield` and read `CLAUDE.md` first — it's detailed and mostly current. Then read `ScamShield_ISJ107V_Assignment2.docx`, which is the graded spec and wins over CLAUDE.md wherever they conflict (see §3 of this plan for the two known drifts: the stale Firestore-deviation note, and FR-09 now meaning Guardian Alert rather than nothing). Verify §2's done/not-done claims against the actual code before trusting them — this plan was written from reading the repo's README and CLAUDE.md, not from running the code. Start with Guardian Alert (FR-09) — it's pure mobile-app work, needs no backend changes, and it's the highest-priority gap. Ask before changing any decision listed in §4.
+> All graded FR/NFR/ET work is implemented (FR-01..FR-16). What's left is two manual, code-external steps (§6.2) — re-run `ingestion/schema.sql` against the live Supabase project, and add `{{ .Token }}` to its Magic Link email template — plus the repo's pre-existing TODOs (§6.4: confirm Render deploy, record perf numbers, take screenshots). Assignment 2 is due 19 September 2026 and has NOT been submitted yet (an earlier CLAUDE.md note claiming "submitted 30 June" was stale and has been corrected). Verify this plan's done/not-done claims against the actual repo before trusting them.
