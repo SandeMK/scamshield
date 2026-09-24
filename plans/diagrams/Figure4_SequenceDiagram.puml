@@ -1,0 +1,85 @@
+@startuml
+skinparam backgroundColor white
+skinparam SequenceParticipantBorderColor #1B4F72
+skinparam SequenceParticipantBackgroundColor #DCE6F1
+skinparam SequenceParticipantFontColor #14213D
+skinparam SequenceActorBorderColor #1B4F72
+skinparam SequenceActorFontColor #14213D
+skinparam SequenceLifeLineBorderColor #1B4F72
+skinparam SequenceArrowColor #1B4F72
+skinparam SequenceArrowFontColor #14213D
+skinparam SequenceGroupBorderColor #1B4F72
+skinparam SequenceGroupFontColor #14213D
+skinparam NoteBackgroundColor #FFFFCC
+skinparam NoteBorderColor #B8860B
+skinparam shadowing false
+
+autonumber
+
+actor "Mobile User" as user
+participant "ScamShield UI\n(Scans screen)" as ui
+participant "ScanStore + ApiClient\n(application logic)" as app
+participant "Cloud Threat Scoring API" as api
+participant "ScamScorer\n(RuleEngine + MLClassifier)" as scorer
+database "Threat Intelligence DB\n(data service)" as db
+actor "Trusted Contact" as contact
+
+user -> ui : SMS notification received
+ui -> app : process(text, sender, SMS)
+activate app
+app -> app : LocalRuleEngine.check(text)
+app --> ui : provisional card (FR-06)
+ui --> user : instant warning if score >= 90
+
+app -> api : POST /api/v1/score/sms\n(HTTPS, X-API-Key)
+activate api
+api -> scorer : score(text)
+activate scorer
+scorer -> scorer : rule_sub_score + reason codes
+scorer -> scorer : ml_confidence =\npredictProba(text)
+note right
+  Emerging-technology component:
+  TF-IDF + Logistic Regression
+  inference (ET-01, ET-02)
+end note
+scorer -> scorer : fuse 0.6 x ML + 0.4 x rules
+scorer --> api : draft ScanResult
+deactivate scorer
+
+api -> db : lookup(SHA-256 of URL)
+activate db
+db --> api : Indicator or null
+deactivate db
+
+alt exact URL match
+  api -> api : floor risk_score at 90,\nadd INTEL_MATCH
+else domain match only
+  api -> api : risk_score + 15,\nadd INTEL_MATCH
+else no match
+  api -> api : keep fused score
+end
+api -> api : critical override,\nassign classification
+
+api --> app : 200 OK: risk_score, classification,\nexplanation_codes (>= 3), ml_confidence,\nrule_sub_score, model_version
+deactivate api
+app --> ui : ScanResult
+ui --> user : final colour-coded result
+
+alt classification == CRITICAL and trusted contact saved
+  ui -> contact : automatic SMS alert (FR-09),\nno tap required
+end
+
+alt user confirms it is a scam
+  user -> ui : tap "Report scam"
+  ui -> app : report(text, url, SCAM)
+  app -> api : POST /api/v1/report
+  activate api
+  api -> db : upsert hashed indicators\n(+ device_id)
+  activate db
+  db --> api : rows written
+  deactivate db
+  api --> app : 201 Created (FR-07)
+  deactivate api
+end
+deactivate app
+@enduml

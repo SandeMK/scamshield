@@ -1,0 +1,79 @@
+@startuml
+left to right direction
+skinparam backgroundColor white
+skinparam ActorBorderColor #1B4F72
+skinparam ActorFontColor #14213D
+skinparam ActorFontSize 14
+skinparam UseCaseBorderColor #1B4F72
+skinparam UseCaseFontColor #14213D
+skinparam UseCaseFontSize 13
+skinparam UseCaseBackgroundColor white
+skinparam ArrowColor #1B4F72
+skinparam ArrowFontColor #1B4F72
+skinparam ArrowFontSize 11
+skinparam RectangleBorderColor #1B4F72
+skinparam RectangleFontColor #14213D
+skinparam RectangleFontStyle bold
+skinparam NoteBackgroundColor #FFFFCC
+skinparam NoteBorderColor #B8860B
+skinparam NoteFontSize 12
+skinparam shadowing false
+
+actor "Fintech Partner\nSystem" as fintech
+actor "Mobile User" as user
+actor "System\nAdministrator" as admin
+actor "Daily Scheduler" as scheduler
+actor "Trusted Contact" as contact
+actor "Public Threat Feed\n(URLhaus / OpenPhish)" as feed
+
+rectangle "ScamShield System" {
+  usecase "UC-01\nScan Incoming SMS" as UC01
+  usecase "UC-02\nCheck Shared Message" as UC02
+  usecase "UC-03\nScore Message" as UC03
+  usecase "UC-04\nLook Up Threat Indicator" as UC04
+  usecase "UC-05\nShow Instant Local Warning" as UC05
+  usecase "UC-14\nSend Guardian Alert" as UC14
+  usecase "UC-06\nView Scan Result" as UC06
+  usecase "UC-07\nSubmit Report" as UC07
+  usecase "UC-08\nReport Scam" as UC08
+  usecase "UC-09\nReport False Positive" as UC09
+  usecase "UC-10\nView Analytics Dashboard" as UC10
+  usecase "UC-11\nIngest Public Threat Feeds" as UC11
+  usecase "UC-12\nConfigure Connection Settings" as UC12
+  usecase "UC-13\nManage Profile & Notifications" as UC13
+}
+
+note right of UC04
+Emerging technology:
+hybrid rule + ML scoring
+(FR-03, ET-01..ET-03)
+end note
+
+user --> UC01
+user --> UC02
+user --> UC06
+user --> UC08
+user --> UC09
+user --> UC10
+user --> UC12
+user --> UC13
+
+admin --> UC10
+admin --> UC12
+admin --> UC11
+
+scheduler --> UC11
+fintech --> UC03
+
+UC01 ..> UC03 : <<include>>
+UC02 ..> UC03 : <<include>>
+UC03 ..> UC04 : <<include>>
+UC05 ..> UC01 : <<extend>>
+UC14 ..> UC01 : <<extend>>
+UC08 --|> UC07
+UC09 --|> UC07
+
+UC04 --> feed
+UC11 --> feed
+UC14 --> contact : notifies
+@enduml

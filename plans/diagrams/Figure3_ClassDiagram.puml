@@ -1,0 +1,163 @@
+@startuml
+skinparam backgroundColor white
+skinparam ClassBorderColor #1B4F72
+skinparam ClassFontColor #14213D
+skinparam ClassHeaderBackgroundColor #DCE6F1
+skinparam ClassAttributeFontSize 12
+skinparam ArrowColor #1B4F72
+skinparam ArrowFontColor #1B4F72
+skinparam shadowing false
+hide circle
+
+class ScamScorer {
+  -mlWeight : double = 0.6
+  -ruleWeight : double = 0.4
+  -criticalThreshold : int = 90
+  +score(text : String) : ScanResult
+  -fuse(ml : double, rule : int) : int
+  -label(score : int) : RiskLevel
+}
+
+note right of ScamScorer
+  Collaborates at run time with a
+  RuleEngine and an MLClassifier
+  (Section 3.1); folded from this
+  diagram to keep it readable.
+end note
+
+interface ThreatIntelClient {
+  +lookup(url : String) : Indicator
+  +upsert(i : Indicator) : boolean
+}
+
+class SupabaseThreatIntelClient {
+  -baseUrl : String
+  -serviceKey : String
+  +lookup(url : String) : Indicator
+  +upsert(i : Indicator) : boolean
+  -sha256(value : String) : String
+}
+
+note bottom of SupabaseThreatIntelClient
+  The daily ingestion job (FR-08)
+  also writes through this interface;
+  not modelled as a separate class.
+end note
+
+class AnalyticsSummary {
+  -requestsTotal : int
+  -highRiskDetections : int
+  -reportsReceived : int
+  -p50LatencyMs : double
+  +refresh() : void
+}
+
+class Scan {
+  -scanId : String
+  -text : String
+  -sender : String
+  -source : ScanSource
+  -receivedAt : DateTime
+  -localScore : int
+  -offline : boolean
+  +process() : ScanResult
+  +extractUrls() : List<String>
+}
+
+class ScanSource <<enumeration>> {
+  SMS
+  SHARED
+  SIMULATED
+  PARTNER_API
+}
+
+class ScanResult {
+  -riskScore : int
+  -classification : RiskLevel
+  -mlConfidence : double
+  -ruleSubScore : int
+  -modelVersion : String
+  -latencyMs : double
+  +isHighRisk() : boolean
+}
+
+class Indicator {
+  -indicatorId : long
+  -indicatorHash : String
+  -indicatorType : String
+  -source : String
+  -threatTag : String
+  -reputation : int
+  -hitCount : int
+  -firstSeen : DateTime
+  -lastSeen : DateTime
+  +matches(url : String) : boolean
+  +refresh() : void
+}
+
+class Report {
+  -reportId : long
+  -deviceId : String
+  -reportType : ReportType
+  -textHash : String
+  -urlHash : String
+  -createdAt : DateTime
+  +submit() : boolean
+}
+
+class ReportType <<enumeration>> {
+  SCAM
+  FALSE_POSITIVE
+}
+
+class RiskLevel <<enumeration>> {
+  SAFE
+  LOW_RISK
+  MEDIUM_RISK
+  HIGH_RISK
+  CRITICAL
+}
+
+class ExplanationCode {
+  -code : String
+  -detail : String
+}
+
+class UserProfile {
+  -userId : String
+  -deviceId : String
+  -displayName : String
+  -email : String
+  -totalScans : int
+  -totalReports : int
+  -createdAt : DateTime
+  -lastActive : DateTime
+}
+
+class NotificationPrefs {
+  -alertThreshold : RiskLevel
+  -retroactiveUpdates : boolean
+  -reportOutcomes : boolean
+  -digestFrequency : String
+}
+
+ScamScorer "1" --> "1" ThreatIntelClient : queries >
+ScamScorer ..> ScanResult : returns
+
+SupabaseThreatIntelClient ..|> ThreatIntelClient
+
+Scan "1" ..> "0..1" AnalyticsSummary : aggregates
+Scan "1" --> "0..1" ScanResult : produces >
+Scan "1" --> "0..*" Report : raises >
+
+ScanResult "1" --> "3..6" ExplanationCode : contains >
+ScanResult ..> RiskLevel
+
+SupabaseThreatIntelClient "1" --> "0..*" Indicator : stores >
+Report ..> Indicator : creates / refreshes <
+Report "1" --> "1" ReportType
+
+UserProfile "1" --> "1" NotificationPrefs : configures >
+Report "0..*" --> "1" UserProfile : linked via deviceId >
+NotificationPrefs ..> RiskLevel
+@enduml

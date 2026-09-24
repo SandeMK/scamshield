@@ -114,7 +114,7 @@ Runs automatically daily via GitHub Actions (04:00 UTC), or trigger manually:
 ### 7. Performance measurements (§14.6)
 ```bash
 python perf/latency_test.py --base-url http://localhost:8000       # NFR-01
-python perf/propagation_test.py --base-url http://localhost:8000   # NFR-07, needs Supabase env
+python perf/propagation_test.py --base-url http://localhost:8000   # OBJ-03, needs Supabase env
 ```
 
 ### 8. Deploy to Render (free tier)
@@ -123,15 +123,15 @@ auto-configures) -> set env values: `API_KEY`, `ADMIN_KEY`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_KEY`. Then set repo variable `API_BASE_URL` so the
 keep-alive workflow prevents free-tier cold starts.
 
-## Database note (design deviation)
+## Database note
 
-Assignment 2 specified Cloud Firestore; the implementation uses Supabase
-(PostgreSQL). Rationale: the indicator workload is relational (unique
-hash+type upserts with `hit_count` increments and reputation merging via a
-single SQL function), row-level security locks tables to the service key,
-and the free tier requires no billing account. The documented design --
-collections, fields, SHA-256 hashing, first/last-seen metadata -- maps
-one-to-one onto the SQL schema in `ingestion/schema.sql`.
+Assignment 2 specifies Supabase (PostgreSQL) directly, §3.1/§5.1 — not a
+deviation from anything. Rationale: the indicator workload is relational
+(unique hash+type upserts with `hit_count` increments and reputation
+merging via a single SQL function), row-level security locks tables to the
+service key, and the free tier requires no billing account. The documented
+design -- entities, fields, SHA-256 hashing, first/last-seen metadata --
+maps one-to-one onto the SQL schema in `ingestion/schema.sql`.
 
 ## Tech stack
 

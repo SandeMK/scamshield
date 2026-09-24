@@ -16,11 +16,57 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
+    companion object {
+        private const val SEND_SMS_REQUEST_CODE = 101
+    }
+
+    private var pendingSendSmsResult: MethodChannel.Result? = null
+
     override fun getCachedEngineId(): String = ScamShieldApp.ENGINE_ID
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleShareIntent(intent)
+        setupGuardianChannel()
+    }
+
+    // FR-09: SEND_SMS is requested only when the user opts in to Guardian
+    // Alert from Settings, never at first launch alongside RECEIVE_SMS.
+    private fun setupGuardianChannel() {
+        val engine = FlutterEngineCache.getInstance().get(ScamShieldApp.ENGINE_ID) ?: return
+        MethodChannel(engine.dartExecutor.binaryMessenger, "scamshield/guardian")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "hasSendSmsPermission" -> result.success(hasSendSmsPermission())
+                    "requestSendSmsPermission" -> {
+                        if (hasSendSmsPermission()) {
+                            result.success(true)
+                        } else {
+                            pendingSendSmsResult = result
+                            ActivityCompat.requestPermissions(
+                                this, arrayOf(Manifest.permission.SEND_SMS), SEND_SMS_REQUEST_CODE
+                            )
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+    }
+
+    private fun hasSendSmsPermission() =
+        ContextCompat.checkSelfPermission(this, Manifest.permission.SEND_SMS) ==
+            PackageManager.PERMISSION_GRANTED
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == SEND_SMS_REQUEST_CODE) {
+            pendingSendSmsResult?.success(hasSendSmsPermission())
+            pendingSendSmsResult = null
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

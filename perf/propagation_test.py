@@ -1,5 +1,5 @@
 """
-Section 14.6 / NFR-07 propagation test: report a fresh scam URL, then poll
+Section 14.6 / OBJ-03 propagation test: report a fresh scam URL, then poll
 scoring until INTEL_MATCH appears. Target: < 30 seconds.
 
 Requires the API to be running WITH Supabase configured (env vars set),

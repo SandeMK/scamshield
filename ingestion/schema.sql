@@ -62,3 +62,49 @@ $$;
 -- Lock the tables down: only the service key (bypasses RLS) may touch them.
 alter table indicators enable row level security;
 alter table reports    enable row level security;
+
+-- ---------------------------------------------------------------------------
+-- UC-13 Manage Profile & Notifications (FR-14/15/16) — added post-submission,
+-- nullable-safe migration on the live tables. device_id is a hub, not a
+-- chain: client-generated, anonymous, exists whether or not a profile is
+-- ever created. Report -> UserProfile, not the reverse, so a device's scan
+-- and report history survives deleting its profile.
+-- ---------------------------------------------------------------------------
+
+create extension if not exists pgcrypto;
+
+alter table reports add column if not exists device_id text;
+create index if not exists reports_device_id_idx on reports (device_id);
+
+create table if not exists user_profiles (
+    user_id             uuid primary key default gen_random_uuid(),
+    device_id           text not null unique,
+    display_name        text,
+    email               text unique,
+    notification_prefs  jsonb not null default '{
+        "alert_threshold": "MEDIUM_RISK",
+        "retroactive_updates": true,
+        "report_outcomes": true,
+        "digest_frequency": "off"
+    }'::jsonb,
+    total_scans         integer not null default 0,
+    total_reports       integer not null default 0,
+    created_at          timestamptz not null default now(),
+    last_active         timestamptz not null default now()
+);
+
+create index if not exists user_profiles_device_id_idx on user_profiles (device_id);
+create index if not exists user_profiles_email_idx on user_profiles (email);
+
+alter table user_profiles enable row level security;
+
+-- Atomic counter bump, called by POST /api/v1/report when device_id is set.
+-- A no-op (not an error) if the device has no profile yet.
+create or replace function increment_profile_reports(p_device_id text)
+returns void
+language sql
+security definer
+as $$
+    update user_profiles set total_reports = total_reports + 1, last_active = now()
+    where device_id = p_device_id;
+$$;
