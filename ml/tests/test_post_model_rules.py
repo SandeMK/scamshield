@@ -124,6 +124,32 @@ def test_brand_codes_are_not_model_features():
     assert list(extract_rules(FNB_LURE).features) == FEATURE_ORDER
 
 
+def test_mobile_local_rules_use_the_same_lists():
+    """mobile-app/lib/services/local_rules.dart ports BRANDS, the shortener
+    list and the bare-link TLDs; they must not drift apart."""
+    import re
+    from features import BRANDS, URL_SHORTENERS, _BARE_LINK_TLDS
+    dart_path = os.path.join(os.path.dirname(ML_DIR), "mobile-app", "lib",
+                             "services", "local_rules.dart")
+    if not os.path.exists(dart_path):
+        pytest.skip("mobile-app not present")
+    dart = open(dart_path).read()
+
+    def strings(src):
+        return tuple(re.findall(r"'([^']*)'", src))
+
+    def const_list(name):
+        return strings(re.search(rf"const {name} = \[(.*?)\];", dart, re.S).group(1))
+
+    assert const_list("_urlShorteners") == URL_SHORTENERS
+    assert const_list("_bareLinkTlds") == _BARE_LINK_TLDS
+    entries = re.findall(r"_Brand\(\s*'([^']+)',\s*\[(.*?)\],\s*\[(.*?)\],\s*\[(.*?)\]\)",
+                         dart, re.S)
+    dart_brands = {name: {"text": strings(t), "host": strings(h), "domains": strings(d)}
+                   for name, t, h, d in entries}
+    assert dart_brands == BRANDS
+
+
 # --- False-positive guard: legitimate messages are unchanged --------------
 
 def _baseline():
