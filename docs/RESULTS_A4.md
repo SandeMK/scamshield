@@ -15,7 +15,16 @@ GET /api/v1/health
 
 Model bundle: RandomForest `v1.0.0`, trained and pinned under
 scikit-learn 1.9.0 (`ml/requirements.txt`). CI installs `scikit-learn-1.9.0`
-with no `InconsistentVersionWarning`.
+with no `InconsistentVersionWarning`. The Render build of `1d3b7ea` installs
+the same version:
+
+```
+#11 1.890 Collecting scikit-learn==1.9.0 (from -r api/../ml/requirements.txt (line 1))
+#11 1.899   Downloading scikit_learn-1.9.0-cp311-cp311-manylinux_2_27_x86_64.manylinux_2_28_x86_64.whl.metadata (11 kB)
+```
+
+The training and serving versions match, so `InconsistentVersionWarning`
+(raised only on a mismatch) cannot occur at model load.
 
 ## Success criteria vs measured
 
@@ -156,7 +165,5 @@ does not raise other `bit.ly` links (no shortener domain indicator).
 
 ## Still to record (student)
 
-- Render build log for `1d3b7ea`: `scikit-learn==1.9.0` installed and no
-  `InconsistentVersionWarning` on model load.
 - Release APK on the Samsung S938B: device tests ST-01 to ST-07.
 - Screenshots listed in `plans/A4_BUILD_BRIEF.md` §7.

@@ -159,11 +159,11 @@ predates the current spec's due date and was stale; corrected here).
 7. Supabase free-tier's built-in email sending is low-volume (intended for
    testing, not production traffic) — fine for the pilot/demo, worth a
    one-line caveat in the report if FR-16 is demoed live.
-8. URLhaus keyless `csv_recent` returns 410 Gone (seen 28 Oct 2026).
-   ingest.py now uses the authenticated API (v1/urls/recent, Auth-Key
-   header). **Create a free abuse.ch Auth-Key (https://auth.abuse.ch/) and
-   add GitHub Actions secret `URLHAUS_AUTH_KEY`**, then run "Threat Feed
-   Ingestion" manually. Without the secret only OpenPhish is ingested.
+8. ~~URLhaus feed~~ — done 28 Oct 2026. Keyless `csv_recent` is 410 Gone;
+   ingest.py uses the authenticated API (v1/urls/recent, Auth-Key header)
+   with repo secret `URLHAUS_AUTH_KEY` (set). First run: URLhaus 2000 +
+   OpenPhish 600 indicators, no feed failures. Without the secret only
+   OpenPhish is ingested.
 
 ### Report notes — channel scope (WhatsApp/email question)
 Proposal + Assignment 2 are deliberately SMS-only. Defense: Android
