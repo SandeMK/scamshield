@@ -124,7 +124,7 @@ does not raise other `bit.ly` links (no shortener domain indicator).
 |---|---|---|---|
 | ML (`ml/tests`) | 5 | **49 passed** | CI + local |
 | API (`api/tests`) | 17 | **24 passed** | CI + local |
-| Ingestion (`ingestion/tests`, incl. UT-06 hash) | 4 | **4 passed** | CI + local |
+| Ingestion (`ingestion/tests`, incl. UT-06 hash) | 4 | **7 passed** (4 when measured + 3 URLhaus API tests) | CI + local |
 | Flutter (`mobile-app/test/widget_test.dart`) | 35 | **40 passed** | local only (not in CI) |
 
 ## Known limitations and trade-offs (for discussion)
@@ -137,9 +137,12 @@ does not raise other `bit.ly` links (no shortener domain indicator).
   to 6 codes, so an intel-matched response can carry 7. On the SARS sample
   the cap now drops `ML_PHISHING_PATTERN`; the brand code is placed first so
   it survives.
-- **URLhaus feed offline.** `https://urlhaus.abuse.ch/downloads/csv_recent/`
-  (used by `ingestion/ingest.py`) returns **410 Gone** as of 28 Oct 2026, so
-  only OpenPhish (now redirected to GitHub) is currently ingested daily.
+- **URLhaus feed moved behind authentication.** The keyless
+  `https://urlhaus.abuse.ch/downloads/csv_recent/` returned **410 Gone** on
+  28 Oct 2026, so only OpenPhish (now redirected to GitHub) was being
+  ingested. `ingestion/ingest.py` now uses abuse.ch's authenticated API
+  (`v1/urls/recent`, up to 1,000 URLs from the last 3 days per run), which
+  needs a free Auth-Key stored as the `URLHAUS_AUTH_KEY` repo secret.
 - **Shared API key.** The repository is public and the mobile app ships its
   API key in source, so anyone can call `/report` and add indicators. That
   could raise any URL to CRITICAL for all users. Acceptable for a sideloaded

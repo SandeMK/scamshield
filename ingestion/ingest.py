@@ -6,7 +6,7 @@ Fetches indicators from two open-source feeds, normalizes them, hashes them
 threat-intelligence database via the ingest_indicators RPC.
 
 Feeds:
-    URLhaus  (abuse.ch)  - recent malicious URLs, CSV
+    URLhaus  (abuse.ch)  - malware URLs added in the last 3 days, JSON API
     OpenPhish            - community phishing URLs, plain text
 
 Runs on a daily schedule via GitHub Actions (.github/workflows/ingest.yml).
@@ -14,18 +14,21 @@ Runs on a daily schedule via GitHub Actions (.github/workflows/ingest.yml).
 Env vars required:
     SUPABASE_URL          e.g. https://xyz.supabase.co
     SUPABASE_SERVICE_KEY  service role / secret key
+    URLHAUS_AUTH_KEY      free abuse.ch Auth-Key (https://auth.abuse.ch/);
+                          without it URLhaus is skipped and OpenPhish still runs
 """
 
-import csv
 import hashlib
-import io
 import os
 import sys
 from urllib.parse import urlparse
 
 import requests
 
-URLHAUS_CSV = "https://urlhaus.abuse.ch/downloads/csv_recent/"
+# The old keyless download (urlhaus.abuse.ch/downloads/csv_recent/) returns
+# 410 Gone; abuse.ch now requires an Auth-Key. Sent as a header so it never
+# appears in a URL or an error message.
+URLHAUS_RECENT = "https://urlhaus-api.abuse.ch/v1/urls/recent/limit/1000/"
 OPENPHISH_TXT = "https://openphish.com/feed.txt"
 
 BATCH_SIZE = 500
@@ -69,19 +72,32 @@ def indicator_rows(url: str, source: str, threat_tag: str, reputation: int):
         }
 
 
-def fetch_urlhaus():
-    print("Fetching URLhaus recent CSV ...")
-    r = requests.get(URLHAUS_CSV, timeout=60)
-    r.raise_for_status()
+def urlhaus_rows(payload: dict) -> list:
+    """Indicator rows from a urls/recent API response."""
+    status = payload.get("query_status")
+    if status == "no_results":
+        return []
+    if status != "ok":
+        raise RuntimeError(f"URLhaus query_status={status!r}")
     rows = []
-    reader = csv.reader(io.StringIO(r.text))
-    for line in reader:
-        if not line or line[0].startswith("#") or len(line) < 6:
+    for entry in payload.get("urls", []):
+        url = (entry.get("url") or "").strip()
+        if not url:
             continue
-        url, threat = line[2], line[5]
-        rows.extend(indicator_rows(url, "urlhaus", threat or "malware", 90))
+        rows.extend(indicator_rows(url, "urlhaus", entry.get("threat") or "malware", 90))
         if len(rows) >= MAX_PER_FEED:
             break
+    return rows
+
+
+def fetch_urlhaus():
+    print("Fetching URLhaus recent URLs (API) ...")
+    key = os.environ.get("URLHAUS_AUTH_KEY", "")
+    if not key:
+        raise RuntimeError("URLHAUS_AUTH_KEY not set (free key: https://auth.abuse.ch/)")
+    r = requests.get(URLHAUS_RECENT, headers={"Auth-Key": key}, timeout=60)
+    r.raise_for_status()
+    rows = urlhaus_rows(r.json())
     print(f"  URLhaus indicators: {len(rows)}")
     return rows
 

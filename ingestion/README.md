@@ -14,7 +14,9 @@
 ## One-time setup
 1. Supabase -> SQL Editor -> paste `schema.sql` -> Run.
 2. GitHub repo -> Settings -> Secrets and variables -> Actions ->
-   add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY`.
+   add `SUPABASE_URL`, `SUPABASE_SERVICE_KEY` and `URLHAUS_AUTH_KEY`
+   (free abuse.ch Auth-Key from https://auth.abuse.ch/; URLhaus no longer
+   serves keyless downloads. Without it only OpenPhish is ingested).
 3. Actions tab -> "Threat Feed Ingestion" -> Run workflow (first import).
 
 ## Design notes

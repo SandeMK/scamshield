@@ -102,7 +102,7 @@ python fintech-client/client.py --base-url https://<deployed-host> --api-key <ke
 Runs automatically daily via GitHub Actions (04:00 UTC), or trigger manually:
 - GitHub -> Actions -> "Threat Feed Ingestion" -> Run workflow, or
 - `curl -X POST -H "X-Admin-Key: <admin-key>" <api-host>/api/v1/intel/ingest`, or
-- locally: `SUPABASE_URL=... SUPABASE_SERVICE_KEY=... python ingestion/ingest.py`
+- locally: `SUPABASE_URL=... SUPABASE_SERVICE_KEY=... URLHAUS_AUTH_KEY=... python ingestion/ingest.py`
 
 ### 6. Tests
 ```bash
