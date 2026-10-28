@@ -74,6 +74,14 @@ def test_reported_bare_shortener_link_matches_later_scans(db):
         assert body["risk_score"] >= 90
 
 
+def test_reported_sars_lure_shows_intel_and_brand_codes(db):
+    sars = "SARS refund of R3,450 approved. Claim now: bit.ly/sars-rf"
+    _report(sars)
+    codes = [c["code"] for c in _score(sars)["explanation_codes"]]
+    assert codes[0] == "INTEL_MATCH"
+    assert "BRAND_LINK_MISMATCH" in codes
+
+
 def test_bare_link_matches_feed_url_stored_with_https(db):
     db.rows.append({"indicator_hash": hash_indicator("https://evil-pay.com/login"),
                     "indicator_type": "url", "source": "openphish"})

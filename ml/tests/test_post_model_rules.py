@@ -10,7 +10,8 @@ ML_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ML_DIR)
 
 from features import (  # noqa: E402
-    canonical_url, extract_links, extract_rules, is_protected_domain,
+    FEATURE_ORDER, brand_rule, canonical_url, extract_links, extract_rules,
+    is_protected_domain,
 )
 
 BASELINE_PATH = os.path.join(ML_DIR, "tests", "fixtures", "legit_baseline.json")
@@ -69,6 +70,58 @@ def test_canonical_url_only_strips_and_adds_scheme():
 ])
 def test_protected_domains(host, protected):
     assert is_protected_domain(host) is protected
+
+
+# --- Fix B: SA brand impersonation via mismatched links -------------------
+
+SARS_LURE = "SARS refund of R3,450 approved. Claim now: bit.ly/sars-rf"
+FNB_LURE = ("FNB: Your account is on hold. Verify your details at "
+            "fnb-secure-za.com/login within 24 hrs")
+
+
+@pytest.mark.parametrize("text, code, detail", [
+    (SARS_LURE, "BRAND_LINK_MISMATCH",
+     "Mentions SARS but the link leads somewhere else"),
+    (FNB_LURE, "BRAND_LOOKALIKE_DOMAIN",
+     "Link imitates FNB but is not FNB's official website"),
+])
+def test_sa_lures_reach_high_risk_with_brand_code(scorer, text, code, detail):
+    res = scorer.score(text)
+    assert res["classification"] in ("HIGH_RISK", "CRITICAL")
+    assert {"code": code, "detail": detail} in res["explanation_codes"]
+
+
+def test_brand_code_survives_the_six_code_cap(scorer):
+    codes = scorer.score(SARS_LURE)["explanation_codes"]   # 7 candidates
+    assert len(codes) == 6
+    assert codes[0]["code"] == "BRAND_LINK_MISMATCH"
+
+
+@pytest.mark.parametrize("text, expected", [
+    ("Your FNB OTP is 123456", None),                                # no link
+    ("FNB: verify at fnb-verify.co.za/login",
+     ("BRAND_LOOKALIKE_DOMAIN", "FNB")),                             # lookalike wins
+    ("Absa: get the app at https://www.absa.co.za/app", None),       # official link
+    ("SARS eFiling: https://secure.sarsefiling.co.za/landing", None),
+    ("Capitec: see bit.ly/cap-help", ("BRAND_LINK_MISMATCH", "Capitec")),
+    ("Win big at bit.ly/promo", None),                               # no brand
+    ("Rewards at www.gotyme-rewards.top", ("BRAND_LOOKALIKE_DOMAIN", "TymeBank")),
+    ("Pay at standard-bank-verify.com/x",
+     ("BRAND_LOOKALIKE_DOMAIN", "Standard Bank")),
+    ("Track it at sapo.pt/x", None),             # brand word only inside a link
+])
+def test_brand_rule(text, expected):
+    assert brand_rule(text, extract_rules(text).urls) == expected
+
+
+def test_only_one_brand_code_fires():
+    reasons = extract_rules("FNB: verify at fnb-verify.co.za/login").reasons
+    assert [r["code"] for r in reasons if r["code"].startswith("BRAND_")] == \
+        ["BRAND_LOOKALIKE_DOMAIN"]
+
+
+def test_brand_codes_are_not_model_features():
+    assert list(extract_rules(FNB_LURE).features) == FEATURE_ORDER
 
 
 # --- False-positive guard: legitimate messages are unchanged --------------

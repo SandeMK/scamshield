@@ -8,6 +8,7 @@ of truth used by training, scoring, and the cloud API.
 
 import re
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 # ---------------------------------------------------------------------------
 # Model-input rules — FROZEN.
@@ -58,8 +59,8 @@ FEATURE_ORDER = list(REASON_CODES.keys())
 
 
 # ---------------------------------------------------------------------------
-# Post-model rule layer (A4). Supplies links for threat-intel lookup and,
-# later, extra reason codes. Never feeds rule_feature_vector() or
+# Post-model rule layer (A4). Supplies links for threat-intel lookup and
+# the brand reason codes. Never feeds rule_feature_vector() or
 # engineered_features(), so the trained model's inputs are unchanged.
 # ---------------------------------------------------------------------------
 
@@ -164,6 +165,42 @@ def is_protected_domain(host: str) -> bool:
     return _on_domain(host, URL_SHORTENERS + _OFFICIAL_DOMAINS)
 
 
+# Post-model reason codes: (description, weight). Not in FEATURE_ORDER.
+POST_MODEL_CODES = {
+    "BRAND_LOOKALIKE_DOMAIN": ("Link imitates {brand} but is not {brand}'s official website", 30),
+    "BRAND_LINK_MISMATCH":    ("Mentions {brand} but the link leads somewhere else", 20),
+}
+_BRAND_TEXT_PATTERNS = {
+    brand: re.compile(r"\b(?:" + "|".join(map(re.escape, b["text"])) + r")\b", re.I)
+    for brand, b in BRANDS.items()
+}
+
+
+def brand_rule(text: str, urls: list):
+    """(code, brand) for at most one brand code, or None. Needs a link, so
+    genuine brand SMS such as "Your FNB OTP is 123456" never fire.
+
+    BRAND_LOOKALIKE_DOMAIN (checked first): a link's host contains a brand
+    keyword but is not on that brand's official domain (fnb-verify.co.za).
+    BRAND_LINK_MISMATCH: the text names a brand and no link goes to that
+    brand's official domain (shorteners, unrelated hosts).
+    """
+    if not urls:
+        return None
+    hosts = [(urlparse(u).hostname or "").lower() for u in urls]
+    for host in hosts:
+        compact = host.replace("-", "")
+        for brand, b in BRANDS.items():
+            if any(k in compact for k in b["host"]) and not _on_domain(host, b["domains"]):
+                return "BRAND_LOOKALIKE_DOMAIN", brand
+    prose = LINK_PATTERN.sub(" ", text)   # a name inside a link is not a mention
+    for brand, b in BRANDS.items():
+        if (_BRAND_TEXT_PATTERNS[brand].search(prose)
+                and not any(_on_domain(h, b["domains"]) for h in hosts)):
+            return "BRAND_LINK_MISMATCH", brand
+    return None
+
+
 @dataclass
 class RuleResult:
     features: dict          # code -> 0/1
@@ -202,9 +239,19 @@ def extract_rules(text: str) -> RuleResult:
         {"code": code, "description": REASON_CODES[code][0]}
         for code, v in fired.items() if v
     ]
-    rule_score = min(100, sum(REASON_CODES[c][1] for c, v in fired.items() if v))
+    rule_score = sum(REASON_CODES[c][1] for c, v in fired.items() if v)
 
-    return RuleResult(features=features, reasons=reasons, rule_score=rule_score, urls=urls)
+    # Post-model layer: adds a reason and rule score, never a model feature.
+    brand = brand_rule(text, urls)
+    if brand:
+        code, name = brand
+        description, weight = POST_MODEL_CODES[code]
+        # First in the list so it survives the 6-code cap in score.py.
+        reasons.insert(0, {"code": code, "description": description.format(brand=name)})
+        rule_score += weight
+
+    return RuleResult(features=features, reasons=reasons,
+                      rule_score=min(100, rule_score), urls=urls)
 
 
 def rule_feature_vector(text: str):
