@@ -35,7 +35,9 @@ from pydantic import BaseModel, Field
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "ml"))
 from score import ScamScorer  # noqa: E402
-from features import extract_rules  # noqa: E402
+from features import (  # noqa: E402
+    extract_rules, extract_links, canonical_url, has_scheme, is_protected_domain,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -53,6 +55,7 @@ API_KEY = os.environ.get("API_KEY", "demo-key")        # §12: API-key auth
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "admin-demo-key")
 DOMAIN_MATCH_BONUS = 15   # weaker evidence: domain-level intel match
 CRITICAL_FLOOR = 90       # §13.3: exact URL hash match in threat DB is critical
+MAX_INTEL_URLS = 3        # NFR-01: bound DB round-trips per message (<= 2 queries per URL)
 
 DEFAULT_NOTIFICATION_PREFS = {
     "alert_threshold": "MEDIUM_RISK",
@@ -86,6 +89,12 @@ def hash_indicator(value: str) -> str:
     return hashlib.sha256(value.strip().lower().encode()).hexdigest()
 
 
+def domain_of(url: str) -> str:
+    from urllib.parse import urlparse
+    netloc = urlparse(url if "://" in url else "http://" + url).netloc
+    return netloc.split(":")[0]
+
+
 class ThreatIntelClient:
     """Fallback stub used when Supabase env vars are absent (offline dev)."""
 
@@ -103,12 +112,13 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
     (weaker evidence). Requires SUPABASE_URL + SUPABASE_SERVICE_KEY.
     """
 
-    def __init__(self, base_url: str, key: str):
+    def __init__(self, base_url: str, key: str, transport=None):
         import httpx
         self._rest = f"{base_url.rstrip('/')}/rest/v1"
         self._client = httpx.Client(
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=1.5,  # keep total response well under the 2 s budget
+            transport=transport,  # tests inject httpx.MockTransport
         )
 
     def ping(self) -> bool:
@@ -119,12 +129,12 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
         except Exception:
             return False
 
-    def _query(self, indicator_hash: str, indicator_type: str) -> Optional[dict]:
+    def _query(self, indicator_hashes: list, indicator_type: str) -> Optional[dict]:
         try:
             r = self._client.get(
                 f"{self._rest}/indicators",
                 params={
-                    "indicator_hash": f"eq.{indicator_hash}",
+                    "indicator_hash": f"in.({','.join(indicator_hashes)})",
                     "indicator_type": f"eq.{indicator_type}",
                     "select": "source,threat_tag,reputation,hit_count",
                     "limit": "1",
@@ -138,13 +148,18 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
             return None
 
     def lookup(self, url: str) -> Optional[dict]:
-        from urllib.parse import urlparse
-        match = self._query(hash_indicator(url), "url")
+        """url is the link as written in the message. A scheme-less link
+        ("bit.ly/x") is checked as both http:// and https:// in one query.
+        Shortener and official brand domains are never matched by domain."""
+        url = url.strip()
+        variants = [url] if has_scheme(url) else ["http://" + url, "https://" + url]
+        match = self._query([hash_indicator(v) for v in variants], "url")
         if match:
             return {**match, "match_type": "url"}
-        netloc = urlparse(url if "://" in url else "http://" + url).netloc
-        domain = netloc.split(":")[0]
-        match = self._query(hash_indicator(domain), "domain") if domain else None
+        domain = domain_of(url)
+        if not domain or is_protected_domain(domain):
+            return None
+        match = self._query([hash_indicator(domain)], "domain")
         return {**match, "match_type": "domain"} if match else None
 
     def record_report(self, report: dict) -> None:
@@ -422,13 +437,14 @@ _stats = {
 _latencies_ms = deque(maxlen=1000)
 
 
-def _apply_intel(result: dict) -> dict:
-    """Check extracted URLs against threat intelligence (§13.3).
+def _apply_intel(result: dict, links: list) -> dict:
+    """Check the message's links (as written) against threat intelligence (§13.3).
 
     Exact URL hash match = critical: score floors at 90. Domain-only match
-    is weaker corroborating evidence: +15, capped at 100.
+    is weaker corroborating evidence: +15, capped at 100. Only the first
+    MAX_INTEL_URLS links are looked up, to protect the 2 s budget (NFR-01).
     """
-    for url in result.get("urls", []):
+    for url in links[:MAX_INTEL_URLS]:
         match = intel.lookup(url)
         if not match:
             continue
@@ -463,7 +479,7 @@ def _finalize(result: dict, started: float) -> dict:
 def score_sms(req: SmsRequest):
     started = time.perf_counter()
     result = scorer.score(req.text)
-    result = _apply_intel(result)
+    result = _apply_intel(result, extract_links(req.text))
     return _finalize(result, started)
 
 
@@ -473,10 +489,9 @@ def score_url(req: UrlRequest):
     # Score the URL both as text (rules like shorteners fire on it) and
     # against threat intelligence.
     result = scorer.score(req.url)
-    rules = extract_rules(req.url)
-    if req.url not in result["urls"]:
-        result["urls"] = list({*result["urls"], req.url})
-    result = _apply_intel(result)
+    if canonical_url(req.url) not in result["urls"]:
+        result["urls"].append(canonical_url(req.url))
+    result = _apply_intel(result, extract_links(req.url) or [req.url.strip()])
     result["indicator_hash"] = hash_indicator(req.url)
     return _finalize(result, started)
 
@@ -494,10 +509,9 @@ def report(req: ReportRequest):
     # OBJ-03 / FR-07: confirmed-scam reports become shared indicators so
     # they influence scoring for all users (target: within 30 s).
     if req.report_type == "scam":
-        from urllib.parse import urlparse
         urls = set(extract_rules(req.text).urls if req.text else [])
         if req.url:
-            urls.add(req.url)
+            urls.add(canonical_url(req.url))
         batch = []
         for u in urls:
             batch.append({"indicator_hash": hash_indicator(u),
@@ -505,9 +519,10 @@ def report(req: ReportRequest):
                           "source": "user_report",
                           "threat_tag": "user_reported",
                           "reputation": 70})
-            netloc = urlparse(u if "://" in u else "http://" + u).netloc
-            domain = netloc.split(":")[0]
-            if domain:
+            domain = domain_of(u)
+            # A2: a reported bit.ly/... link must not flag every bit.ly link
+            # (or the real fnb.co.za) for all users; URL-level is enough.
+            if domain and not is_protected_domain(domain):
                 batch.append({"indicator_hash": hash_indicator(domain),
                               "indicator_type": "domain",
                               "source": "user_report",

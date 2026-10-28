@@ -1,0 +1,111 @@
+{
+  "_note": "ScamScorer.score() output for legitimate messages, recorded on commit e62f461 before the A4 post-model rules. These must never change (A4 brief §4.4).",
+  "messages": {
+    "FNB_OTP": {
+      "text": "Your FNB OTP is 482913. Never share it with anyone.",
+      "expected": {
+        "risk_score": 41,
+        "classification": "MEDIUM_RISK",
+        "ml_confidence": 0.42,
+        "rule_sub_score": 40,
+        "explanation_codes": [
+          {
+            "code": "IMPERSONATION",
+            "detail": "References a bank, SARS, or other trusted institution"
+          },
+          {
+            "code": "CREDENTIAL_REQUEST",
+            "detail": "Asks for credentials, PIN, OTP, or personal details"
+          },
+          {
+            "code": "SUSPICIOUS_NUMBER",
+            "detail": "Contains a phone number or premium shortcode"
+          },
+          {
+            "code": "ML_BENIGN_PATTERN",
+            "detail": "Message resembles legitimate traffic (scam probability 0.42)"
+          }
+        ],
+        "urls": [],
+        "model_version": "v1.0.0 (RandomForest)"
+      }
+    },
+    "SARS_EFILING": {
+      "text": "SARS: Your eFiling return has been received. Visit https://www.sars.gov.za for status.",
+      "expected": {
+        "risk_score": 52,
+        "classification": "MEDIUM_RISK",
+        "ml_confidence": 0.705,
+        "rule_sub_score": 25,
+        "explanation_codes": [
+          {
+            "code": "URL_PRESENT",
+            "detail": "Message contains a link"
+          },
+          {
+            "code": "IMPERSONATION",
+            "detail": "References a bank, SARS, or other trusted institution"
+          },
+          {
+            "code": "ML_PHISHING_PATTERN",
+            "detail": "ML confidence 0.70 - structure matches known phishing patterns"
+          }
+        ],
+        "urls": [
+          "https://www.sars.gov.za"
+        ],
+        "model_version": "v1.0.0 (RandomForest)"
+      }
+    },
+    "CAPITEC_PAYMENT": {
+      "text": "Capitec: R250.00 paid to Checkers. Avail bal R1,204.33",
+      "expected": {
+        "risk_score": 23,
+        "classification": "LOW_RISK",
+        "ml_confidence": 0.219,
+        "rule_sub_score": 25,
+        "explanation_codes": [
+          {
+            "code": "IMPERSONATION",
+            "detail": "References a bank, SARS, or other trusted institution"
+          },
+          {
+            "code": "MONEY_MENTION",
+            "detail": "Mentions money or a specific amount"
+          },
+          {
+            "code": "ML_BENIGN_PATTERN",
+            "detail": "Message resembles legitimate traffic (scam probability 0.22)"
+          }
+        ],
+        "urls": [],
+        "model_version": "v1.0.0 (RandomForest)"
+      }
+    },
+    "LUNCH": {
+      "text": "Hey, are we still on for lunch tomorrow at 1?",
+      "expected": {
+        "risk_score": 0,
+        "classification": "SAFE",
+        "ml_confidence": 0.0,
+        "rule_sub_score": 0,
+        "explanation_codes": [
+          {
+            "code": "ML_BENIGN_PATTERN",
+            "detail": "Message resembles legitimate traffic (scam probability 0.00)"
+          },
+          {
+            "code": "NO_URL",
+            "detail": "No link detected in the message"
+          },
+          {
+            "code": "TEXT_ANALYSIS",
+            "detail": "Wording analysed against known scam vocabulary"
+          }
+        ],
+        "urls": [],
+        "model_version": "v1.0.0 (RandomForest)"
+      }
+    }
+  }
+}

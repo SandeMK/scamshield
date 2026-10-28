@@ -57,12 +57,119 @@ REASON_CODES = {
 FEATURE_ORDER = list(REASON_CODES.keys())
 
 
+# ---------------------------------------------------------------------------
+# Post-model rule layer (A4). Supplies links for threat-intel lookup and,
+# later, extra reason codes. Never feeds rule_feature_vector() or
+# engineered_features(), so the trained model's inputs are unchanged.
+# ---------------------------------------------------------------------------
+
+URL_SHORTENERS = ("bit.ly", "t.co", "is.gd", "rb.gy", "cutt.ly", "tinyurl.com",
+                  "ow.ly", "shorturl.at", "tiny.cc", "goo.gl")
+# A bare "host.tld" with no path only counts as a link for familiar TLDs, so
+# run-together sentences like "Hello.How are you" are not read as links.
+_BARE_LINK_TLDS = ("com", "net", "org", "info", "biz", "xyz", "top", "click",
+                   "link", "site", "online", "live", "shop", "app", "io", "za")
+_LINK_HOST = r"(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+"
+_LINK_CHAR = r"[^\s<>\"']"
+_LINK_HOST_END = r"(?![\w-]|\.[a-z0-9])"   # host stops here; a sentence-ending "." is fine
+
+LINK_PATTERN = re.compile(
+    r"(?<![@\w.-])(?:"                      # not part of an email address or longer token
+    r"https?://" + _LINK_CHAR + r"+"
+    r"|www\." + _LINK_CHAR + r"+"
+    r"|(?:" + "|".join(map(re.escape, URL_SHORTENERS)) + r")" + _LINK_HOST_END
+    + r"(?:/" + _LINK_CHAR + r"*)?"
+    r"|" + _LINK_HOST + r"[a-z]{2,24}/" + _LINK_CHAR + r"*"
+    r"|" + _LINK_HOST + r"(?:" + "|".join(_BARE_LINK_TLDS) + r")" + _LINK_HOST_END
+    + r")",
+    re.I,
+)
+_SCHEME_PATTERN = re.compile(r"^[a-z][a-z0-9+.-]*://", re.I)
+_TRAILING_PUNCT = ".,;:!?)\"'"
+
+# Official domains verified 28 Oct 2026 (TymeBank rebranded to GoTyme Bank in
+# Jan 2026; tymebank.co.za now redirects to gotyme.co.za).
+# text: words that name the brand in a message; host: substrings that imitate
+# it in a link's host; domains: the brand's own sites (subdomains included).
+BRANDS = {
+    "FNB": {"text": ("fnb", "first national bank"),
+            "host": ("fnb", "firstnationalbank"),
+            "domains": ("fnb.co.za",)},
+    "Absa": {"text": ("absa",), "host": ("absa",),
+             "domains": ("absa.co.za", "absa.africa")},
+    "Standard Bank": {"text": ("standard bank", "standardbank"),
+                      "host": ("standardbank",),
+                      "domains": ("standardbank.co.za", "standardbank.com")},
+    "Capitec": {"text": ("capitec",), "host": ("capitec",),
+                "domains": ("capitecbank.co.za", "capitec.co.za")},
+    "Nedbank": {"text": ("nedbank",), "host": ("nedbank",),
+                "domains": ("nedbank.co.za",)},
+    "TymeBank": {"text": ("tymebank", "tyme bank", "gotyme"),
+                 "host": ("tymebank", "gotyme"),
+                 "domains": ("tymebank.co.za", "gotyme.co.za")},
+    "SARS": {"text": ("sars", "efiling", "e-filing"),
+             "host": ("sars", "efiling"),
+             "domains": ("sars.gov.za", "sarsefiling.co.za")},
+    "SASSA": {"text": ("sassa",), "host": ("sassa",),
+              "domains": ("sassa.gov.za",)},
+    "NSFAS": {"text": ("nsfas",), "host": ("nsfas",),
+              "domains": ("nsfas.org.za",)},
+    "SA Post Office": {"text": ("post office", "postoffice", "sapo"),
+                       "host": ("postoffice",),   # not "sapo": sapo.pt is unrelated
+                       "domains": ("postoffice.co.za",)},
+    "The Courier Guy": {"text": ("courier guy", "courierguy"),
+                        "host": ("courierguy",),
+                        "domains": ("thecourierguy.co.za",)},
+    "PostNet": {"text": ("postnet",), "host": ("postnet",),
+                "domains": ("postnet.co.za",)},
+    "Vodacom": {"text": ("vodacom",), "host": ("vodacom",),
+                "domains": ("vodacom.co.za", "vodacom.com")},
+    "MTN": {"text": ("mtn",), "host": ("mtn",),
+            "domains": ("mtn.co.za", "mtn.com")},
+    "Telkom": {"text": ("telkom",), "host": ("telkom",),
+               "domains": ("telkom.co.za",)},
+}
+_OFFICIAL_DOMAINS = tuple(d for b in BRANDS.values() for d in b["domains"])
+
+
+def canonical_url(raw: str) -> str:
+    """Strip trailing punctuation and add http:// if there is no scheme. Nothing else."""
+    url = raw.strip().rstrip(_TRAILING_PUNCT)
+    return url if _SCHEME_PATTERN.match(url) else "http://" + url
+
+
+def has_scheme(url: str) -> bool:
+    return bool(_SCHEME_PATTERN.match(url.strip()))
+
+
+def extract_links(text: str) -> list:
+    """LINK_PATTERN matches as written (scheme kept or absent), trailing
+    punctuation stripped, de-duplicated in order."""
+    links = []
+    for m in LINK_PATTERN.findall(text):
+        link = m.rstrip(_TRAILING_PUNCT)
+        if link and link not in links:
+            links.append(link)
+    return links
+
+
+def _on_domain(host: str, domains) -> bool:
+    host = host.lower().rstrip(".")
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def is_protected_domain(host: str) -> bool:
+    """Shortener or official brand domain: never stored or matched as a
+    domain-level threat indicator (one bad bit.ly link must not taint all)."""
+    return _on_domain(host, URL_SHORTENERS + _OFFICIAL_DOMAINS)
+
+
 @dataclass
 class RuleResult:
     features: dict          # code -> 0/1
     reasons: list           # fired reason codes with descriptions
     rule_score: int         # 0-100 capped sum of fired weights
-    urls: list              # extracted URLs
+    urls: list              # canonical_url() of each LINK_PATTERN match, de-duplicated
 
 
 def _contains_any(text: str, words) -> bool:
@@ -88,7 +195,7 @@ def _model_rule_flags(text: str) -> dict:
 
 def extract_rules(text: str) -> RuleResult:
     fired = _model_rule_flags(text)
-    urls = MODEL_URL_PATTERN.findall(text)
+    urls = list(dict.fromkeys(canonical_url(l) for l in extract_links(text)))
 
     features = {code: int(v) for code, v in fired.items()}
     reasons = [
