@@ -67,7 +67,8 @@ def _report(text):
 def test_reported_bare_shortener_link_matches_later_scans(db):
     _report("Your parcel is waiting, pay the fee at bit.ly/xyz")
 
-    for later in ("Last chance to pay: bit.ly/xyz", "Pay now at http://bit.ly/xyz"):
+    for later in ("Last chance to pay: bit.ly/xyz", "Pay now at http://bit.ly/xyz",
+                  "Pay now at https://bit.ly/xyz"):
         body = _score(later)
         assert body["explanation_codes"][0]["code"] == "INTEL_MATCH"
         assert body["risk_score"] >= 90
@@ -79,6 +80,13 @@ def test_bare_link_matches_feed_url_stored_with_https(db):
     body = _score("Account locked. Unlock at evil-pay.com/login")
     assert body["explanation_codes"][0]["code"] == "INTEL_MATCH"
     assert "openphish" in body["explanation_codes"][0]["detail"]
+
+
+def test_scheme_variants():
+    from main import scheme_variants
+    assert scheme_variants("bit.ly/x") == ["http://bit.ly/x", "https://bit.ly/x"]
+    assert scheme_variants("HTTPS://bit.ly/x") == ["http://bit.ly/x", "https://bit.ly/x"]
+    assert scheme_variants("ftp://evil.com/x") == ["ftp://evil.com/x"]
 
 
 def test_report_never_stores_shortener_or_brand_domain(db):

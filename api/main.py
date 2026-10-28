@@ -22,6 +22,7 @@ Design notes:
 import hashlib
 import logging
 import os
+import re
 import secrets
 import sys
 import time
@@ -89,6 +90,15 @@ def hash_indicator(value: str) -> str:
     return hashlib.sha256(value.strip().lower().encode()).hexdigest()
 
 
+def scheme_variants(url: str) -> list:
+    """Hash candidates for one link: http:// and https:// count as the same
+    link, and a scheme-less link ("bit.ly/x") is tried with both."""
+    rest = re.sub(r"^https?://", "", url, flags=re.I)
+    if rest == url and has_scheme(url):   # some other scheme: exact only
+        return [url]
+    return ["http://" + rest, "https://" + rest]
+
+
 def domain_of(url: str) -> str:
     from urllib.parse import urlparse
     netloc = urlparse(url if "://" in url else "http://" + url).netloc
@@ -148,12 +158,12 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
             return None
 
     def lookup(self, url: str) -> Optional[dict]:
-        """url is the link as written in the message. A scheme-less link
-        ("bit.ly/x") is checked as both http:// and https:// in one query.
-        Shortener and official brand domains are never matched by domain."""
+        """url is the link as written in the message. Its http:// and
+        https:// forms are checked in one query (a scheme-less link gets
+        both), then its domain, unless that is a shortener or official
+        brand domain."""
         url = url.strip()
-        variants = [url] if has_scheme(url) else ["http://" + url, "https://" + url]
-        match = self._query([hash_indicator(v) for v in variants], "url")
+        match = self._query([hash_indicator(v) for v in scheme_variants(url)], "url")
         if match:
             return {**match, "match_type": "url"}
         domain = domain_of(url)
