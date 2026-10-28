@@ -45,6 +45,14 @@ def load_data(path=DATA_PATH) -> pd.DataFrame:
     return df
 
 
+def heldout_split(df):
+    """Stratified 80/20 split, shared with evaluate.py so both use the same test set."""
+    return train_test_split(
+        df["text"].tolist(), df["y"].values,
+        test_size=0.2, stratify=df["y"], random_state=RANDOM_STATE,
+    )
+
+
 def build_features(texts, vectorizer=None):
     """TF-IDF + rule features, returns (X, fitted_vectorizer)."""
     if vectorizer is None:
@@ -68,10 +76,7 @@ def main():
     print(f"Dataset: {len(df)} messages "
           f"({df['y'].sum()} scam / {(1 - df['y']).sum()} legitimate)")
 
-    X_train_txt, X_test_txt, y_train, y_test = train_test_split(
-        df["text"].tolist(), df["y"].values,
-        test_size=0.2, stratify=df["y"], random_state=RANDOM_STATE,
-    )
+    X_train_txt, X_test_txt, y_train, y_test = heldout_split(df)
 
     X_train, vectorizer = build_features(X_train_txt)
     X_test, _ = build_features(X_test_txt, vectorizer)
