@@ -10,10 +10,15 @@ import re
 from dataclasses import dataclass
 
 # ---------------------------------------------------------------------------
-# Rule definitions
+# Model-input rules — FROZEN.
+# model.joblib was trained on exactly these patterns, word lists and
+# FEATURE_ORDER. Changing any of them changes what the model sees and
+# invalidates the reported F1 (tests/test_model_regression.py guards this).
+# New detection belongs in a post-model rule layer that adds reason codes
+# and rule score only, never model features.
 # ---------------------------------------------------------------------------
 
-URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+|\b[a-z0-9-]+\.(?:com|net|org|co\.za|info|xyz|top|click|link|site|online)\b\S*)", re.I)
+MODEL_URL_PATTERN = re.compile(r"(https?://\S+|www\.\S+|\b[a-z0-9-]+\.(?:com|net|org|co\.za|info|xyz|top|click|link|site|online)\b\S*)", re.I)
 SHORTENER_PATTERN = re.compile(r"\b(bit\.ly|tinyurl\.com|goo\.gl|t\.co|is\.gd|ow\.ly|cutt\.ly|rb\.gy|shorturl\.at|tiny\.cc)\b", re.I)
 PHONE_PATTERN = re.compile(r"(\+27\d{9}|\b0\d{9}\b|\b\d{5,6}\b)")  # SA numbers + premium shortcodes
 CURRENCY_PATTERN = re.compile(r"(R\s?\d[\d,\.]*|ZAR|\$\s?\d[\d,\.]*|£\s?\d[\d,\.]*)", re.I)
@@ -65,12 +70,11 @@ def _contains_any(text: str, words) -> bool:
     return any(w in t for w in words)
 
 
-def extract_rules(text: str) -> RuleResult:
-    urls = URL_PATTERN.findall(text)
+def _model_rule_flags(text: str) -> dict:
+    """The nine model-input rules, keyed in FEATURE_ORDER. Frozen (see above)."""
     caps_ratio = sum(1 for c in text if c.isupper()) / max(len(text), 1)
-
-    fired = {
-        "URL_PRESENT": bool(urls),
+    return {
+        "URL_PRESENT": bool(MODEL_URL_PATTERN.search(text)),
         "URL_SHORTENER": bool(SHORTENER_PATTERN.search(text)),
         "URGENCY_LANGUAGE": _contains_any(text, URGENCY_WORDS),
         "IMPERSONATION": _contains_any(text, IMPERSONATION_WORDS),
@@ -80,6 +84,11 @@ def extract_rules(text: str) -> RuleResult:
         "SUSPICIOUS_NUMBER": bool(PHONE_PATTERN.search(text)),
         "ALL_CAPS_EMPHASIS": caps_ratio > 0.3 and len(text) > 20,
     }
+
+
+def extract_rules(text: str) -> RuleResult:
+    fired = _model_rule_flags(text)
+    urls = MODEL_URL_PATTERN.findall(text)
 
     features = {code: int(v) for code, v in fired.items()}
     reasons = [
@@ -92,9 +101,9 @@ def extract_rules(text: str) -> RuleResult:
 
 
 def rule_feature_vector(text: str):
-    """Numeric vector in FEATURE_ORDER, for stacking with TF-IDF."""
-    f = extract_rules(text).features
-    return [f[c] for c in FEATURE_ORDER]
+    """Numeric vector in FEATURE_ORDER, for stacking with TF-IDF (model input)."""
+    f = _model_rule_flags(text)
+    return [int(f[c]) for c in FEATURE_ORDER]
 
 
 # ---------------------------------------------------------------------------
@@ -113,7 +122,7 @@ ENGINEERED_ORDER = [
 
 
 def engineered_features(text: str):
-    urls = URL_PATTERN.findall(text)
+    urls = MODEL_URL_PATTERN.findall(text)
     max_url = max(urls, key=len) if urls else ""
     specials = sum(1 for c in text if not c.isalnum() and not c.isspace())
     tokens = max(len(text.split()), 1)
