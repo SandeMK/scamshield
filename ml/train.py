@@ -2,8 +2,9 @@
 ScamShield model training pipeline.
 
 Hybrid design: TF-IDF text features + rule-based features (from features.py)
-feed a Logistic Regression classifier. Evaluated with stratified train/test
-split against the proposal's success criterion (F1 >= 0.85).
+feed a classifier chosen by 5-fold CV (LogReg / Random Forest / Gradient
+Boosting; the committed model.joblib is Random Forest v1.0.0, trained under
+scikit-learn 1.9.0). Evaluated with stratified train/test split against the proposal's success criterion (F1 >= 0.85).
 
 Usage: python train.py
 Outputs: model.joblib (vectorizer + classifier bundle), metrics printed.

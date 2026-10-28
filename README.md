@@ -28,7 +28,7 @@ database fed daily by URLhaus/OpenPhish and instantly by user reports.
 
 | Folder | Deliverable (proposal §) | Status |
 |---|---|---|
-| [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.942 |
+| [`ml/`](ml/) | Hybrid detection engine — rules + ML (§3.2.2 core) | ✅ Done — F1 0.934 |
 | [`api/`](api/) | Cloud Threat Scoring API (§3.2.2) | ✅ Done — ~3 ms latency |
 | [`ingestion/`](ingestion/) | Public Threat Intelligence Integration (§3.2.4) + Shared DB schema (§3.2.3) | ✅ Done — daily automated ingestion |
 | [`mobile-app/`](mobile-app/) | Flutter Mobile Application (§3.2.1, FR-01..FR-10) + In-App Analytics Dashboard (§3.2.5) | ✅ Done — see mobile-app/README.md |
@@ -38,7 +38,7 @@ database fed daily by URLhaus/OpenPhish and instantly by user reports.
 
 | Success criterion | Target | Achieved |
 |---|---|---|
-| Scam detection F1-score | ≥ 0.85 | **0.942** held-out; model selection §14.5: LogReg 0.941 > RF 0.923 > GB 0.915 (5-fold CV) |
+| Scam detection F1-score | ≥ 0.85 | **0.934** held-out; model selection §14.5: RF 0.943 > LogReg 0.941 > GB 0.915 (5-fold CV, scikit-learn 1.9.0) |
 | Labeled dataset size | ≥ 500 | 5,572 (UCI SMS Spam Collection) |
 | Explanation reason codes | ≥ 3 per result | Guaranteed by design |
 | Scoring response time | < 2 s | ~3 ms locally (p50 1.1 ms) |

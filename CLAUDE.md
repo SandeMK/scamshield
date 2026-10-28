@@ -10,8 +10,10 @@ are the authoritative spec for contracts and naming.
 ## Layout
 - `ml/` — features.py (rules + engineered features, source of explanation
   codes), train.py (auto-downloads dataset; 5-fold CV model selection:
-  LogReg won, F1 0.942 held-out), score.py (hybrid fusion: 60% ML + 40%
-  rules, critical override >= 90; labels SAFE..CRITICAL)
+  committed model.joblib is RandomForest v1.0.0, trained under
+  scikit-learn 1.9.0, held-out F1 0.9338 — see docs/RESULTS.md),
+  score.py (hybrid fusion: 60% ML + 40% rules, critical override >= 90;
+  labels SAFE..CRITICAL)
 - `api/` — FastAPI on /api/v1 (score/sms, score/url, report,
   analytics/summary, health, intel/ingest, profile, profile/{device_id},
   profile/notifications, profile/recovery/request, profile/recovery/verify).
@@ -135,7 +137,10 @@ predates the current spec's due date and was stale; corrected here).
 
 ### TODO (user)
 1. Confirm Render port fix deployed: curl .../api/v1/health returns JSON.
-2. Set API_BASE_URL repo variable on GitHub for keep-alive workflow.
+2. ~~Set API_BASE_URL repo variable~~ — done. Note: GitHub auto-disables
+   scheduled workflows after 60 days without repo activity (ingest +
+   keep-alive were off from early Sep until 28 Oct 2026); re-enable with
+   `gh workflow enable ingest.yml` / `keepalive.yml`.
 3. Run perf/latency_test.py + perf/propagation_test.py against Render URL;
    record numbers for report §14.6.
 4. Take screenshots of 4 tabs + CRITICAL detail sheet → docs/screenshots/
