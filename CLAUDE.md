@@ -136,19 +136,21 @@ predates the current spec's due date and was stale; corrected here).
   Update notification preferences, Request/Verify recovery code).
 
 ### TODO (user)
-1. Confirm Render port fix deployed: curl .../api/v1/health returns JSON.
+1. ~~Confirm Render port fix deployed~~ — done (/health returns JSON).
 2. ~~Set API_BASE_URL repo variable~~ — done. Note: GitHub auto-disables
    scheduled workflows after 60 days without repo activity (ingest +
    keep-alive were off from early Sep until 28 Oct 2026); re-enable with
    `gh workflow enable ingest.yml` / `keepalive.yml`.
-3. Run perf/latency_test.py + perf/propagation_test.py against Render URL;
-   record numbers for report §14.6.
+3. ~~Run perf/latency_test.py + perf/propagation_test.py against Render~~ —
+   done for A4, see docs/RESULTS_A4.md. The deployed API_KEY is
+   ApiClient.defaultApiKey in mobile-app/lib/services/api_client.dart.
 4. Take screenshots of 4 tabs + CRITICAL detail sheet → docs/screenshots/
    referenced from mobile-app/README.md.
-5. **Re-run `ingestion/schema.sql` in the Supabase SQL editor** — the
-   FR-14/15/16 additions (device_id column, user_profiles table,
-   increment_profile_reports function) are not live on the deployed DB
-   until this runs. Safe to re-run the whole file (idempotent).
+5. ~~Re-run `ingestion/schema.sql`~~ — done 28 Oct 2026. Until then every
+   POST /report failed silently (reports.device_id missing), so no user
+   reports reached the DB from 24 Sep to 28 Oct. Check with
+   `select count(*) from information_schema.columns where table_name =
+   'reports' and column_name = 'device_id'` (must be 1).
 6. **Supabase dashboard → Authentication → Email Templates → Magic Link**:
    add `{{ .Token }}` to the template body. Without this, FR-16's recovery
    email is a magic-link button with no visible 6-digit code, and the
@@ -157,6 +159,9 @@ predates the current spec's due date and was stale; corrected here).
 7. Supabase free-tier's built-in email sending is low-volume (intended for
    testing, not production traffic) — fine for the pilot/demo, worth a
    one-line caveat in the report if FR-16 is demoed live.
+8. URLhaus `csv_recent` (ingestion/ingest.py) returns 410 Gone since at
+   least 28 Oct 2026 — only OpenPhish is ingested until ingest.py moves to
+   a supported URLhaus endpoint. Not fixed (outside the A4 brief).
 
 ### Report notes — channel scope (WhatsApp/email question)
 Proposal + Assignment 2 are deliberately SMS-only. Defense: Android
