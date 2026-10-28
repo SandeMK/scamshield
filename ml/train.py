@@ -2,8 +2,9 @@
 ScamShield model training pipeline.
 
 Hybrid design: TF-IDF text features + rule-based features (from features.py)
-feed a Logistic Regression classifier. Evaluated with stratified train/test
-split against the proposal's success criterion (F1 >= 0.85).
+feed a classifier chosen by 5-fold CV (LogReg / Random Forest / Gradient
+Boosting; the committed model.joblib is Random Forest v1.0.0, trained under
+scikit-learn 1.9.0). Evaluated with stratified train/test split against the proposal's success criterion (F1 >= 0.85).
 
 Usage: python train.py
 Outputs: model.joblib (vectorizer + classifier bundle), metrics printed.
@@ -44,6 +45,14 @@ def load_data(path=DATA_PATH) -> pd.DataFrame:
     return df
 
 
+def heldout_split(df):
+    """Stratified 80/20 split, shared with evaluate.py so both use the same test set."""
+    return train_test_split(
+        df["text"].tolist(), df["y"].values,
+        test_size=0.2, stratify=df["y"], random_state=RANDOM_STATE,
+    )
+
+
 def build_features(texts, vectorizer=None):
     """TF-IDF + rule features, returns (X, fitted_vectorizer)."""
     if vectorizer is None:
@@ -67,10 +76,7 @@ def main():
     print(f"Dataset: {len(df)} messages "
           f"({df['y'].sum()} scam / {(1 - df['y']).sum()} legitimate)")
 
-    X_train_txt, X_test_txt, y_train, y_test = train_test_split(
-        df["text"].tolist(), df["y"].values,
-        test_size=0.2, stratify=df["y"], random_state=RANDOM_STATE,
-    )
+    X_train_txt, X_test_txt, y_train, y_test = heldout_split(df)
 
     X_train, vectorizer = build_features(X_train_txt)
     X_test, _ = build_features(X_test_txt, vectorizer)

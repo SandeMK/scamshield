@@ -1,4 +1,4 @@
-scikit-learn>=1.4
+scikit-learn==1.9.0  # must match the version that trained model.joblib (ET-05)
 pandas>=2.0
 numpy>=1.26
 scipy>=1.11

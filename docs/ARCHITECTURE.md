@@ -15,7 +15,7 @@ flowchart LR
     subgraph Cloud["Cloud (Render / local)"]
         API[FastAPI Scoring API<br/>/api/v1]
         RULES[Rule Engine]
-        ML[ML Classifier<br/>TF-IDF + LogReg]
+        ML[ML Classifier<br/>TF-IDF + Random Forest]
         FUSE[Hybrid Fusion<br/>40% rules + 60% ML<br/>+ critical override]
         API --> RULES --> FUSE
         API --> ML --> FUSE

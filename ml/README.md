@@ -1,6 +1,6 @@
 # ScamShield — ML Detection Engine (Component 1)
 
-Hybrid scam-SMS detection: TF-IDF + Logistic Regression combined with an
+Hybrid scam-SMS detection: TF-IDF + Random Forest combined with an
 explainable rule engine. This module is imported by the Cloud Threat Scoring
 API (Component 2) and is the basis of the reason codes shown in the Android app.
 
@@ -15,7 +15,7 @@ API (Component 2) and is the basis of the reason codes shown in the Android app.
 | Criterion | Target | Achieved |
 |---|---|---|
 | Dataset size | >= 500 samples | 5,572 |
-| F1-score | >= 0.85 | 0.942 (held-out); 5-fold CV model selection: LogReg 0.941 > RF 0.923 > GB 0.915 |
+| F1-score | >= 0.85 | 0.934 (held-out); 5-fold CV model selection: RF 0.943 > LogReg 0.941 > GB 0.915 (scikit-learn 1.9.0) |
 | Reason codes per result | >= 3 | Always >= 3 (rules + ML fallbacks) |
 
 ## Hybrid scoring formula
@@ -31,7 +31,7 @@ python score.py     # demo on sample SA smishing messages
 ```
 
 ## Known limitation (document in Assignment 2)
-Legitimate OTP messages can score SUSPICIOUS (shared vocabulary with
+Legitimate OTP messages can score MEDIUM_RISK (shared vocabulary with
 credential phishing). Mitigations: sender-shortcode whitelist, an OTP-format
 rule, and the in-app false-positive reporting loop feeding the shared DB.
 
