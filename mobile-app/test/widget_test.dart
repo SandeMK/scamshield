@@ -167,6 +167,29 @@ void main() {
           'bit.ly/x http://1.2.3.4/x won prize congratulations');
       expect(r.score, lessThanOrEqualTo(100));
     });
+
+    test('scheme-less links count as links (A4 Fix A)', () {
+      for (final text in [
+        'SARS refund of R3,450 approved. Claim now: bit.ly/sars-rf',
+        'Verify at fnb-verify.co.za/login now',
+        'Go to www.sassa-grant.online today',
+      ]) {
+        expect(runLocalRules(text).flags, contains('Contains a link'),
+            reason: text);
+      }
+    });
+
+    test('amounts, times, abbreviations and emails are not links', () {
+      for (final text in [
+        'Pay R3.50 now',
+        'e.g. this',
+        'Meet at 12.30pm',
+        'Email name@fnb.co.za please',
+      ]) {
+        expect(runLocalRules(text).flags, isNot(contains('Contains a link')),
+            reason: text);
+      }
+    });
   });
 
   // ── PermissionScreen ────────────────────────────────────────────────────────

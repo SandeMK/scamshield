@@ -2,11 +2,30 @@
 /// before the cloud response arrives. Dart port of ml/features.py rules.
 library;
 
-final _urlRe = RegExp(
-    r'(https?://\S+|www\.\S+|\b[a-z0-9-]+\.(com|net|org|co\.za|info|xyz|top|click|link|site|online)\b\S*)',
+// Port of LINK_PATTERN in ml/features.py (A4): http(s)/www links,
+// shorteners, bare host.tld/path with any TLD, and bare host.tld for
+// familiar TLDs only. Email addresses (preceded by '@') don't count.
+const _urlShorteners = ['bit.ly', 't.co', 'is.gd', 'rb.gy', 'cutt.ly',
+  'tinyurl.com', 'ow.ly', 'shorturl.at', 'tiny.cc', 'goo.gl'];
+const _bareLinkTlds = ['com', 'net', 'org', 'info', 'biz', 'xyz', 'top',
+  'click', 'link', 'site', 'online', 'live', 'shop', 'app', 'io', 'za'];
+const _linkHost = r'(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+';
+const _linkChar = r'''[^\s<>"']''';
+const _linkHostEnd = r'(?![\w-]|\.[a-z0-9])';
+final _linkRe = RegExp(
+    [
+      r'(?<![@\w.-])(?:',
+      'https?://$_linkChar+',
+      '|www\\.$_linkChar+',
+      '|(?:${_urlShorteners.map(RegExp.escape).join('|')})$_linkHostEnd'
+          '(?:/$_linkChar*)?',
+      '|$_linkHost[a-z]{2,24}/$_linkChar*',
+      '|$_linkHost(?:${_bareLinkTlds.join('|')})$_linkHostEnd',
+      ')',
+    ].join(),
     caseSensitive: false);
 final _shortenerRe = RegExp(
-    r'\b(bit\.ly|tinyurl\.com|goo\.gl|t\.co|is\.gd|ow\.ly|cutt\.ly|rb\.gy)\b',
+    '\\b(${_urlShorteners.map(RegExp.escape).join('|')})\\b',
     caseSensitive: false);
 final _ipUrlRe = RegExp(r'https?://\d{1,3}(\.\d{1,3}){3}');
 
@@ -39,7 +58,7 @@ LocalRuleResult runLocalRules(String text) {
     }
   }
 
-  check(_urlRe.hasMatch(text), 10, 'Contains a link');
+  check(_linkRe.hasMatch(text), 10, 'Contains a link');
   check(_shortenerRe.hasMatch(text), 20, 'Shortened link hides destination');
   check(_ipUrlRe.hasMatch(text), 25, 'Link uses a raw IP address');
   check(_urgency.any(t.contains), 15, 'Urgent or pressuring language');
