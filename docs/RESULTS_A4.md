@@ -4,7 +4,8 @@ Recorded 28 October 2026 against the production deployment
 (`https://scamshield-api-4ywt.onrender.com`, Render free tier, Supabase
 threat DB connected) after merging PR #3 (`1d3b7ea`, A4 prototype fixes).
 Client: macOS over a residential connection. Raw tool output is reproduced
-verbatim in the fenced blocks.
+verbatim in the fenced blocks. Section 6 adds the follow-up of 30 October
+2026 (PR #7: report 503, explanation-code limit), with latency re-run.
 
 ## Deployed version
 
@@ -31,6 +32,7 @@ The training and serving versions match, so `InconsistentVersionWarning`
 | Criterion | Target | A3 | A4 (this run) | Verdict |
 |---|---|---|---|---|
 | Scoring latency, 100 requests (NFR-01) | >= 95% under 2 s | 100% (p50 770 ms, p95 1,214 ms) | **100%** (p50 814 ms, p95 1,254 ms, max 1,537 ms) | PASS |
+| Scoring latency, re-run after PR #7 (30 Oct) | >= 95% under 2 s | — | **100%** (p50 762 ms, p95 1,226 ms, max 1,511 ms) | PASS |
 | Intelligence propagation (NFR-07) | < 30 s | 0.8 s | **0.9 s median** (1.5 / 0.9 / 0.8 s) | PASS |
 | Propagation effect | score influenced | 61 -> 90 | **61 (MEDIUM_RISK) -> 90 (CRITICAL)** | PASS |
 | Detection F1, held-out 20% (ET-01) | >= 0.85 | 0.934 | **0.9338** (unchanged, no retraining) | PASS |
@@ -77,6 +79,9 @@ user-reported indicator reached the DB either. The API logged a warning
 and still returned 200. Applying the migration fixed it; the passing runs
 above were taken straight afterwards. The Supabase project also had to be
 restored after GitHub auto-disabled the daily workflows for inactivity.
+PR #7 (section 6) closes the gap: the two writes are now independent and
+`POST /report` returns 503 if either fails, so the app can no longer show
+success for a report that was not saved.
 
 ## 3. Model: held-out evaluation (`ml/evaluate.py`, no refit)
 
@@ -129,12 +134,14 @@ does not raise other `bit.ly` links (no shortener domain indicator).
 
 ## 5. Tests
 
-| Suite | Before A4 | After A4 | Where |
-|---|---|---|---|
-| ML (`ml/tests`) | 5 | **49 passed** | CI + local |
-| API (`api/tests`) | 17 | **24 passed** | CI + local |
-| Ingestion (`ingestion/tests`, incl. UT-06 hash) | 4 | **7 passed** (4 when measured + 3 URLhaus API tests) | CI + local |
-| Flutter (`mobile-app/test/widget_test.dart`) | 35 | **40 passed** | local only (not in CI) |
+| Suite | Before A4 | After A4 | After PR #7 (30 Oct) | Where |
+|---|---|---|---|---|
+| ML (`ml/tests`) | 5 | 49 passed | **50 passed** | CI + local |
+| API (`api/tests`) | 17 | 24 passed | **27 passed** | CI + local |
+| Ingestion (`ingestion/tests`, incl. UT-06 hash) | 4 | 7 passed (4 when measured + 3 URLhaus API tests) | **7 passed** | CI + local |
+| Flutter (`mobile-app/test/widget_test.dart`) | 35 | 40 passed | **41 passed** | local only (not in CI) |
+
+No failures in any suite.
 
 ## Known limitations and trade-offs (for discussion)
 
@@ -142,10 +149,11 @@ does not raise other `bit.ly` links (no shortener domain indicator).
   On both scam samples they lift the rule sub-score to >= 90, which triggers
   the existing critical override, so a brand rule alone can now produce
   CRITICAL, and with it a Guardian Alert SMS, without ML or intel evidence.
-- **Explanation-code cap.** `INTEL_MATCH` is inserted after `score.py` trims
-  to 6 codes, so an intel-matched response can carry 7. On the SARS sample
-  the cap now drops `ML_PHISHING_PATTERN`; the brand code is placed first so
-  it survives.
+- **Explanation-code cap (resolved in PR #7).** Until 30 Oct, `INTEL_MATCH`
+  was inserted after `score.py` trimmed to 6 codes, so an intel-matched
+  response could carry 7, and on the SARS sample the cap dropped
+  `ML_PHISHING_PATTERN`, breaking ET-03. The limit is now applied once,
+  after `INTEL_MATCH`, and always keeps the one `ML_*` code (section 6).
 - **URLhaus feed moved behind authentication.** The keyless
   `https://urlhaus.abuse.ch/downloads/csv_recent/` returned **410 Gone** on
   28 Oct 2026, so only OpenPhish (now redirected to GitHub) was being
@@ -162,6 +170,57 @@ does not raise other `bit.ly` links (no shortener domain indicator).
   fire when a link is present.
 - **Unverified brand domain.** `thecourierguy.co.za` sits behind a
   Cloudflare challenge and was confirmed only through third-party listings.
+
+## 6. Follow-up, 30 October 2026 (PR #7, merge `3a35adf`)
+
+Two fixes, deployed to Render and confirmed live at 20:37Z:
+
+1. **Reports that fail to save return 503.** `record_report` writes the
+   report row and the indicator batch separately, so one failing no longer
+   skips the other. `POST /report` returns `503 Report not saved` if either
+   write fails, and the app shows "Report not saved — try again" with the
+   report button still enabled. Covered by API tests (row fails / batch fails,
+   each asserting the other write still landed) and a Flutter widget test.
+   A failed write cannot be triggered safely on production, so the 503 path
+   is verified by tests only. The live success path still returns 200.
+2. **Explanation-code limit applied once, at the end.** `score.cap_codes()`
+   trims to 6 after `INTEL_MATCH` is added and always keeps the single
+   `ML_*` code, so every response carries 3 to 6 codes with exactly one ML
+   code (ET-03). Scores are unchanged; only the code list differs.
+
+```
+GET /api/v1/health
+{"status":"ok","model_version":"v1.0.0 (RandomForest)","db_connected":true}
+```
+
+Live code check (SARS sample, then a SARS-style lure with a unique
+throwaway `bit.ly` link reported and rescanned, so the real sample link was
+not reported in production):
+
+```
+SARS sample (no rpt)   95 CRITICAL     n=6 ml=1 ['BRAND_LINK_MISMATCH', 'URL_SHORTENER', 'URGENCY_LANGUAGE', 'IMPERSONATION', 'PRIZE_LURE', 'ML_PHISHING_PATTERN']
+throwaway, before      95 CRITICAL     n=6 ml=1 ['BRAND_LINK_MISMATCH', 'URL_SHORTENER', 'URGENCY_LANGUAGE', 'IMPERSONATION', 'PRIZE_LURE', 'ML_PHISHING_PATTERN']
+POST /report -> 200
+throwaway, after       95 CRITICAL     n=6 ml=1 ['INTEL_MATCH', 'BRAND_LINK_MISMATCH', 'URL_SHORTENER', 'URGENCY_LANGUAGE', 'IMPERSONATION', 'ML_PHISHING_PATTERN']
+```
+
+Before PR #7 the same SARS sample returned the first six codes without
+`ML_PHISHING_PATTERN`, and after a report it returned 7 codes, also without
+an ML code.
+
+Latency, re-run once (`perf/latency_test.py`, 2026-10-30T20:37:40Z):
+
+```
+Requests : 100
+p50      : 762.3 ms
+p95      : 1225.6 ms
+max      : 1510.5 ms
+< 2 s    : 100.0%  (target: >= 95%) -> PASS
+```
+
+Propagation was not re-run. The report write path changed only in how
+failures are handled, and the live report above matched on the first
+rescan, 1.5 s later.
 
 ## Still to record (student)
 
