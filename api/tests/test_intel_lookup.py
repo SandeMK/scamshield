@@ -23,14 +23,19 @@ class FakePostgrest:
 
     def __init__(self):
         self.rows = []
+        self.reports = []
         self.lookups = 0
+        self.failing = set()   # path suffixes that answer 500
 
     def __call__(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path
+        if any(path.endswith(f) for f in self.failing):
+            return httpx.Response(500)
         if path.endswith("/rpc/ingest_indicators"):
             self.rows.extend(json.loads(request.content)["batch"])
             return httpx.Response(200, json=None)
         if path.endswith("/reports"):
+            self.reports.append(json.loads(request.content))
             return httpx.Response(201)
         if path.endswith("/indicators"):
             self.lookups += 1
@@ -80,6 +85,31 @@ def test_reported_sars_lure_shows_intel_and_brand_codes(db):
     codes = [c["code"] for c in _score(sars)["explanation_codes"]]
     assert codes[0] == "INTEL_MATCH"
     assert "BRAND_LINK_MISMATCH" in codes
+
+
+def test_sars_codes_after_report_stay_within_limit_with_one_ml_code(db):
+    sars = "SARS refund of R3,450 approved. Claim now: bit.ly/sars-rf"
+    _report(sars)
+    codes = [c["code"] for c in _score(sars)["explanation_codes"]]
+    # 8 candidates (INTEL_MATCH + 6 rule codes + ML) are capped once, at the end
+    assert codes == ["INTEL_MATCH", "BRAND_LINK_MISMATCH", "URL_SHORTENER",
+                     "URGENCY_LANGUAGE", "IMPERSONATION", "ML_PHISHING_PATTERN"]
+    assert 3 <= len(codes) <= 6
+    assert sum(c.startswith("ML_") for c in codes) == 1     # ET-03
+
+
+@pytest.mark.parametrize("failing, still_written", [
+    ("/reports", "rows"),                     # report row down, batch still lands
+    ("/rpc/ingest_indicators", "reports"),    # batch down, report row still lands
+])
+def test_report_returns_503_when_either_write_fails(db, failing, still_written):
+    db.failing.add(failing)
+    r = client.post("/api/v1/report",
+                    json={"text": "Pay the fee at bit.ly/xyz", "report_type": "scam"},
+                    headers=KEY)
+    assert r.status_code == 503
+    assert r.json()["detail"] == "Report not saved"
+    assert getattr(db, still_written)          # the other write was not skipped
 
 
 def test_bare_link_matches_feed_url_stored_with_https(db):

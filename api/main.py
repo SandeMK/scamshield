@@ -35,7 +35,7 @@ from pydantic import BaseModel, Field
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(
     os.path.abspath(__file__))), "ml"))
-from score import ScamScorer  # noqa: E402
+from score import ScamScorer, cap_codes  # noqa: E402
 from features import (  # noqa: E402
     extract_rules, extract_links, canonical_url, has_scheme, is_protected_domain,
 )
@@ -111,8 +111,9 @@ class ThreatIntelClient:
     def lookup(self, url: str) -> Optional[dict]:
         return None
 
-    def record_report(self, report: dict) -> None:
+    def record_report(self, report: dict) -> bool:
         log.info("REPORT %s", report)
+        return True
 
 
 class SupabaseThreatIntelClient(ThreatIntelClient):
@@ -172,7 +173,10 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
         match = self._query([hash_indicator(domain)], "domain")
         return {**match, "match_type": "domain"} if match else None
 
-    def record_report(self, report: dict) -> None:
+    def record_report(self, report: dict) -> bool:
+        """Writes the report row and the indicator batch independently, so a
+        failure in one never skips the other. True only if every write landed."""
+        ok = True
         try:
             self._client.post(f"{self._rest}/reports", json={
                 "report_type": report["report_type"],
@@ -180,13 +184,19 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
                 "url_hash": report.get("url_hash"),
                 "device_id": report.get("device_id"),
             }).raise_for_status()
-            batch = report.get("indicator_batch") or []
-            if batch:
+        except Exception as exc:
+            log.warning("report row persist failed: %s", exc)
+            ok = False
+        batch = report.get("indicator_batch") or []
+        if batch:
+            try:
                 self._client.post(f"{self._rest}/rpc/ingest_indicators",
                                   json={"batch": batch}).raise_for_status()
                 log.info("report ingested %d indicators", len(batch))
-        except Exception as exc:
-            log.warning("report persist failed: %s", exc)
+            except Exception as exc:
+                log.warning("indicator batch persist failed: %s", exc)
+                ok = False
+        return ok
 
 
 # ---------------------------------------------------------------------------
@@ -474,6 +484,8 @@ def _apply_intel(result: dict, links: list) -> dict:
 
 
 def _finalize(result: dict, started: float) -> dict:
+    # The 3-6 code limit is applied once, here, after INTEL_MATCH is added.
+    result["explanation_codes"] = cap_codes(result["explanation_codes"])
     latency_ms = round((time.perf_counter() - started) * 1000, 2)
     _latencies_ms.append(latency_ms)
     _stats["requests_total"] += 1
@@ -488,7 +500,7 @@ def _finalize(result: dict, started: float) -> dict:
 @app.post("/api/v1/score/sms", dependencies=[Depends(require_api_key)])
 def score_sms(req: SmsRequest):
     started = time.perf_counter()
-    result = scorer.score(req.text)
+    result = scorer.score(req.text, cap=False)
     result = _apply_intel(result, extract_links(req.text))
     return _finalize(result, started)
 
@@ -498,7 +510,7 @@ def score_url(req: UrlRequest):
     started = time.perf_counter()
     # Score the URL both as text (rules like shorteners fire on it) and
     # against threat intelligence.
-    result = scorer.score(req.url)
+    result = scorer.score(req.url, cap=False)
     if canonical_url(req.url) not in result["urls"]:
         result["urls"].append(canonical_url(req.url))
     result = _apply_intel(result, extract_links(req.url) or [req.url.strip()])
@@ -540,7 +552,10 @@ def report(req: ReportRequest):
                               "reputation": 50})
         payload["indicator_batch"] = batch
 
-    intel.record_report(payload)
+    if not intel.record_report(payload):
+        # Never acknowledge a report that did not reach the shared DB: the
+        # app shows "Report not saved — try again" and keeps the button live.
+        raise HTTPException(status_code=503, detail="Report not saved")
     if req.device_id:
         profiles.increment_reports(req.device_id)  # no-op if no profile exists
     _stats["reports_received"] += 1

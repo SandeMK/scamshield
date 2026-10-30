@@ -5,10 +5,12 @@
 ///  - services/local_rules.dart: runLocalRules
 ///  - screens/permission_screen.dart: render + button callback
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
-///    report button disabled state
+///    report button disabled state, failed report (API 503)
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:scamshield_app/models.dart';
@@ -455,6 +457,33 @@ void main() {
 
       final reportBtns = tester.widgetList<FilledButton>(find.byType(FilledButton));
       expect(reportBtns.any((b) => b.onPressed != null), isTrue);
+    });
+
+    testWidgets('API 503 on report shows "not saved" and leaves scan unreported',
+        (tester) async {
+      final scan = _fakeScan('HIGH_RISK', score: 80);
+      _seedStore([scan]);
+      final calls = <String>[];
+      await http.runWithClient(() async {
+        await tester.pumpWidget(_wrap(const HomeScreen()));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(ListTile).first);
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Report scam'));
+        await tester.pumpAndSettle();
+      }, () => MockClient((req) async {
+            calls.add(req.url.path);
+            return http.Response('{"detail":"Report not saved"}', 503);
+          }));
+
+      expect(calls, ['/api/v1/report']);
+      expect(find.text('Report not saved — try again'), findsOneWidget);
+      expect(scan.reported, isFalse);
+      expect(ScanStore.instance.reportsSent, 0);
     });
   });
 }

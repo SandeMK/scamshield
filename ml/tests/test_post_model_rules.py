@@ -95,6 +95,15 @@ def test_brand_code_survives_the_six_code_cap(scorer):
     codes = scorer.score(SARS_LURE)["explanation_codes"]   # 7 candidates
     assert len(codes) == 6
     assert codes[0]["code"] == "BRAND_LINK_MISMATCH"
+    assert codes[-1]["code"] == "ML_PHISHING_PATTERN"     # ET-03: never capped away
+
+
+def test_cap_keeps_exactly_one_ml_code_in_place():
+    from score import cap_codes
+    codes = [{"code": c} for c in
+             ("INTEL_MATCH", "A", "B", "ML_PHISHING_PATTERN", "C", "D", "E", "F")]
+    assert [c["code"] for c in cap_codes(codes)] == \
+        ["INTEL_MATCH", "A", "B", "ML_PHISHING_PATTERN", "C", "D"]
 
 
 @pytest.mark.parametrize("text, expected", [

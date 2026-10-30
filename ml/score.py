@@ -5,6 +5,10 @@ Fusion: risk = 100 * (0.6 * ml_confidence + 0.4 * rule_sub_score/100)
 Critical override (13.3): if either layer is critical (>= 90), the final
 score is elevated to the higher sub-score.
 
+Explanation codes: at least 3, at most MAX_CODES, always exactly one ML_*
+code (ET-03). cap_codes() is applied once, as the last step: score() does it
+by default, and the API passes cap=False and caps after adding INTEL_MATCH.
+
 Response contract (12): risk_score, classification, explanation_codes
 [{code, detail}], ml_confidence, rule_sub_score, model_version.
 """
@@ -18,6 +22,7 @@ from features import extract_rules, full_feature_vector
 ML_WEIGHT = 0.6      # Assignment 2 defaults (13.3)
 RULE_WEIGHT = 0.4
 CRITICAL_THRESHOLD = 90
+MAX_CODES = 6
 
 LABELS = [           # Assignment 2 classification enum (11.1 scan_log)
     (90, "CRITICAL"),
@@ -35,6 +40,19 @@ def _label(score: float) -> str:
     return "SAFE"
 
 
+def cap_codes(codes: list) -> list:
+    """Trim to MAX_CODES, order preserved, never dropping the ML_* code:
+    the ML code plus the first MAX_CODES - 1 others are kept."""
+    kept, others = [], 0
+    for c in codes:
+        if c["code"].startswith("ML_"):
+            kept.append(c)
+        elif others < MAX_CODES - 1:
+            kept.append(c)
+            others += 1
+    return kept
+
+
 class ScamScorer:
     def __init__(self, model_path: str = "model.joblib"):
         bundle = joblib.load(model_path)
@@ -43,7 +61,7 @@ class ScamScorer:
         self.model_name = bundle.get("model_name", "unknown")
         self.model_version = bundle.get("model_version", "v1.0.0")
 
-    def score(self, text: str) -> dict:
+    def score(self, text: str, cap: bool = True) -> dict:
         rules = extract_rules(text)
         rule_sub_score = rules.rule_score
 
@@ -92,7 +110,7 @@ class ScamScorer:
             "classification": _label(risk),
             "ml_confidence": round(ml_confidence, 4),
             "rule_sub_score": rule_sub_score,
-            "explanation_codes": codes[:6],
+            "explanation_codes": cap_codes(codes) if cap else codes,
             "urls": rules.urls,
             "model_version": f"{self.model_version} ({self.model_name})",
         }

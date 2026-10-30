@@ -308,7 +308,7 @@ class _ScanDetail extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(ok
               ? 'Report submitted to the shared threat network'
-              : 'Could not submit report — check your connection')));
+              : 'Report not saved — try again')));
     }
   }
 }

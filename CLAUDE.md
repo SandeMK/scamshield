@@ -49,7 +49,8 @@ are the authoritative spec for contracts and naming.
 
 ## Conventions & decisions (do not silently change)
 - Response contract per Assignment 2 §12: risk_score, classification,
-  explanation_codes [{code, detail}] (always >= 3), ml_confidence,
+  explanation_codes [{code, detail}] (3-6, exactly one ML_*; the cap is
+  applied once, after INTEL_MATCH), ml_confidence,
   rule_sub_score, model_version.
 - Indicators are SHA-256 hashed (normalize: strip + lowercase) — identical
   hashing in api/main.py and ingestion/ingest.py; there is a cross-module
