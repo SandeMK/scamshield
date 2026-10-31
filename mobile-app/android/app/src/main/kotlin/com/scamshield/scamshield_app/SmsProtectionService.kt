@@ -5,25 +5,21 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.os.IBinder
-import android.provider.Telephony
 import android.telephony.SmsManager
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import android.Manifest
 import android.content.pm.PackageManager
 import io.flutter.embedding.engine.FlutterEngineCache
-import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Foreground service that keeps the Flutter engine alive when the activity
- * is swiped away, so the scamshield/sms EventChannel continues receiving
- * incoming SMS broadcasts.
+ * Foreground service that keeps the process (and so the Flutter engine and
+ * the scamshield/sms receiver registered in [ScamShieldApp]) alive when the
+ * activity is swiped away, so incoming SMS keep being scanned.
  */
 class SmsProtectionService : Service() {
 
@@ -57,8 +53,6 @@ class SmsProtectionService : Service() {
             return parts
         }
     }
-
-    private var receiver: BroadcastReceiver? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -102,34 +96,6 @@ class SmsProtectionService : Service() {
     private fun setupChannels() {
         val engine = FlutterEngineCache.getInstance().get(ScamShieldApp.ENGINE_ID) ?: return
         val messenger = engine.dartExecutor.binaryMessenger
-
-        // SMS EventChannel — registered on Service context so it survives activity death
-        EventChannel(messenger, "scamshield/sms").setStreamHandler(
-            object : EventChannel.StreamHandler {
-                override fun onListen(args: Any?, events: EventChannel.EventSink?) {
-                    receiver = object : BroadcastReceiver() {
-                        override fun onReceive(context: Context?, intent: Intent?) {
-                            val messages =
-                                Telephony.Sms.Intents.getMessagesFromIntent(intent)
-                            val body =
-                                messages.joinToString("") { it.messageBody ?: "" }
-                            val sender =
-                                messages.firstOrNull()?.originatingAddress ?: "unknown"
-                            events?.success(mapOf("sender" to sender, "body" to body))
-                        }
-                    }
-                    registerReceiver(
-                        receiver,
-                        IntentFilter(Telephony.Sms.Intents.SMS_RECEIVED_ACTION)
-                    )
-                }
-
-                override fun onCancel(args: Any?) {
-                    receiver?.let { unregisterReceiver(it) }
-                    receiver = null
-                }
-            }
-        )
 
         // Notify MethodChannel — Dart calls this to post alert notifications
         // and (FR-09) to fire the automatic Guardian Alert SMS. Registered on
@@ -178,8 +144,4 @@ class SmsProtectionService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onDestroy() {
-        receiver?.let { unregisterReceiver(it) }
-        super.onDestroy()
-    }
 }
