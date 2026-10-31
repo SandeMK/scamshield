@@ -3,6 +3,7 @@
 /// Coverage:
 ///  - util.dart: classificationColor, classificationLabel
 ///  - services/local_rules.dart: runLocalRules
+///  - services/scan_store.dart: guardianAlertMessage (FR-09)
 ///  - screens/permission_screen.dart: render + button callback
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
 ///    report button disabled state, failed report (API 503)
@@ -221,6 +222,32 @@ void main() {
         expect(runLocalRules(text).flags, isNot(contains('Contains a link')),
             reason: text);
       }
+    });
+  });
+
+  // ── guardianAlertMessage (FR-09) ────────────────────────────────────────────
+
+  group('guardianAlertMessage', () {
+    const longScam = 'SARS eFiling: You have a pending refund of R3,450. '
+        'Confirm your ID number at http://sars-refunds.xyz/claim within 24 hours.';
+
+    test('long scam text is truncated with ASCII ... so the SMS stays GSM-7',
+        () {
+      final m = guardianAlertMessage(longScam)!;
+      expect(m, startsWith(guardianAlertPrefix));
+      expect(m, contains('${longScam.substring(0, 80)}..."'));
+      expect(m.codeUnits.every((c) => c < 128), isTrue);
+    });
+
+    test('short scam text is quoted whole', () {
+      const short = 'URGENT: FNB account suspended. Verify at bit.ly/fnb-secure';
+      expect(guardianAlertMessage(short), endsWith('"$short"'));
+    });
+
+    test('a received Guardian Alert never triggers another (no SMS loop)', () {
+      final alert = guardianAlertMessage(longScam)!;
+      expect(guardianAlertMessage(alert), isNull);
+      expect(guardianAlertMessage('  $alert'), isNull);
     });
   });
 

@@ -43,6 +43,19 @@ class SmsProtectionService : Service() {
                 .build()
             nm.notify(System.currentTimeMillis().toInt(), notification)
         }
+
+        /** 67-char parts (UCS-2 multipart limit), never splitting a surrogate pair. */
+        private fun splitUcs2(text: String): ArrayList<String> {
+            val parts = ArrayList<String>()
+            var start = 0
+            while (start < text.length) {
+                var end = minOf(start + 67, text.length)
+                if (end < text.length && Character.isHighSurrogate(text[end - 1])) end--
+                parts.add(text.substring(start, end))
+                start = end
+            }
+            return parts
+        }
     }
 
     private var receiver: BroadcastReceiver? = null
@@ -142,7 +155,15 @@ class SmsProtectionService : Service() {
                     } else {
                         @Suppress("DEPRECATION")
                         val smsManager = SmsManager.getDefault()
-                        val parts = smsManager.divideMessage(message)
+                        // divideMessage() throws SecurityException on some
+                        // devices (Samsung S938B, Android 16) for non-GSM-7
+                        // text: its Unicode path calls getGroupIdLevel1, which
+                        // needs READ_PHONE_STATE. Fall back to UCS-2-sized parts.
+                        val parts = try {
+                            smsManager.divideMessage(message)
+                        } catch (e: SecurityException) {
+                            splitUcs2(message)
+                        }
                         smsManager.sendMultipartTextMessage(number, null, parts, null, null)
                         result.success(true)
                     }
