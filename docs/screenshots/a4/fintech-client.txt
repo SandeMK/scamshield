@@ -1,0 +1,35 @@
+========================================================================
+DemoBank Fraud Desk -> ScamShield Threat Scoring API
+========================================================================
+API status: ok | model: v1.0.0 (RandomForest) | DB connected: True
+
+From +27831234567   risk=100 CRITICAL     rtt= 896.4ms  -> BLOCK + ALERT FRAUD TEAM
+    - BRAND_LOOKALIKE_DOMAIN: Link imitates SARS but is not SARS's official website
+    - URL_PRESENT: Message contains a link
+    - IMPERSONATION: References a bank, SARS, or other trusted institution
+    -> reported to shared threat intelligence network
+
+From +27829990001   risk=100 CRITICAL     rtt= 623.9ms  -> BLOCK + ALERT FRAUD TEAM
+    - BRAND_LINK_MISMATCH: Mentions FNB but the link leads somewhere else
+    - URL_PRESENT: Message contains a link
+    - URL_SHORTENER: Link uses a URL-shortening service that hides the destination
+    -> reported to shared threat intelligence network
+
+From +27761112223   risk= 26 LOW_RISK     rtt= 435.6ms  -> NO ACTION
+    - IMPERSONATION: References a bank, SARS, or other trusted institution
+    - MONEY_MENTION: Mentions money or a specific amount
+    - ML_BENIGN_PATTERN: Message resembles legitimate traffic (scam probability 0.28)
+
+From 29123          risk= 55 MEDIUM_RISK  rtt=1156.3ms  -> QUEUE FOR ANALYST REVIEW
+    - URL_PRESENT: Message contains a link
+    - IMPERSONATION: References a bank, SARS, or other trusted institution
+    - MONEY_MENTION: Mentions money or a specific amount
+
+From +27845556667   risk=  0 SAFE         rtt= 447.8ms  -> NO ACTION
+    - ML_BENIGN_PATTERN: Message resembles legitimate traffic (scam probability 0.00)
+    - NO_URL: No link detected in the message
+    - TEXT_ANALYSIS: Wording analysed against known scam vocabulary
+
+------------------------------------------------------------------------
+Processed 5 messages | blocked 2 | avg round-trip 712.0 ms | max 1156.3 ms (target < 2000 ms)
+Interoperability demonstrated: external system consumed the scoring API and contributed intelligence back.

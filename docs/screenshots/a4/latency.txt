@@ -1,0 +1,5 @@
+Requests : 100
+p50      : 612.0 ms
+p95      : 1275.2 ms
+max      : 1622.1 ms
+< 2 s    : 100.0%  (target: >= 95%) -> PASS

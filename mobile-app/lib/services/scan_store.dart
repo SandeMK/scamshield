@@ -18,6 +18,23 @@ import 'local_rules.dart';
 
 const _notifyChannel = MethodChannel('scamshield/notify');
 
+const guardianAlertPrefix = 'ScamShield Guardian Alert:';
+
+/// FR-09 Guardian Alert SMS body for [text], or null when [text] is itself a
+/// Guardian Alert. The alert quotes the scam, so it scores CRITICAL too; if
+/// the trusted contact also runs ScamShield (or is the other SIM on the same
+/// phone) it would otherwise text back and forth forever. The preview is cut
+/// with ASCII '...' (not '…') so the SMS stays GSM-7 — a Unicode body sends
+/// SmsManager.divideMessage() down a path that needs READ_PHONE_STATE on
+/// some devices (Samsung S938B, Android 16).
+String? guardianAlertMessage(String text) {
+  if (text.trimLeft().startsWith(guardianAlertPrefix)) return null;
+  final preview = text.length > 80 ? '${text.substring(0, 80)}...' : text;
+  return '$guardianAlertPrefix a message received on a '
+      'phone you are the trusted contact for was just classified CRITICAL '
+      '(likely scam). They may need help. Message: "$preview"';
+}
+
 class ScanStore extends ChangeNotifier {
   ScanStore._();
   static final instance = ScanStore._();
@@ -94,14 +111,11 @@ class ScanStore extends ChangeNotifier {
   /// where the branch sits after the final colour-coded result.
   Future<void> _maybeGuardianAlert(Scan scan) async {
     if (scan.result?.classification != 'CRITICAL') return;
+    final message = guardianAlertMessage(scan.text);
+    if (message == null) return;
     final prefs = await SharedPreferences.getInstance();
     final contact = prefs.getString('guardianContact');
     if (contact == null || contact.isEmpty) return;
-    final preview =
-        scan.text.length > 80 ? '${scan.text.substring(0, 80)}…' : scan.text;
-    final message = 'ScamShield Guardian Alert: a message received on a '
-        'phone you are the trusted contact for was just classified CRITICAL '
-        '(likely scam). They may need help. Message: "$preview"';
     try {
       await GuardianChannel.send(contact, message);
     } catch (_) {} // never let a channel/permission failure break scoring

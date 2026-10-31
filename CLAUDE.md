@@ -29,8 +29,11 @@ are the authoritative spec for contracts and naming.
   OpenPhish -> hashed indicators). Runs daily via GitHub Actions (secrets
   already configured in repo settings).
 - `mobile-app/` — Flutter project root. android/ scaffolding fully committed
-  (no setup.sh needed). Kotlin: ScamShieldApp.kt (FlutterEngineCache),
-  SmsProtectionService.kt (FGS + EventChannel + notify MethodChannel),
+  (no setup.sh needed). Kotlin: ScamShieldApp.kt (FlutterEngineCache +
+  share/SMS channels registered before the Dart entrypoint — registering
+  the SMS EventChannel on the service instead lost a cold-start race and
+  silently disabled SMS scanning), SmsProtectionService.kt (FGS + notify
+  MethodChannel incl. Guardian SMS),
   BootReceiver.kt, MainActivity.kt (cached engine + battery prompt).
   Dart: lib/screens/ (home, simulator, dashboard, settings, permission),
   lib/services/ (api_client, scan_store, sms_channel, share_channel,
@@ -71,8 +74,9 @@ predates the current spec's due date and was stale; corrected here).
 ### DONE
 - App runs on physical Samsung S938B (Android 16), sideloaded.
 - Foreground service (SmsProtectionService): persistent notification
-  "ScamShield is protecting you", SMS EventChannel on Service context
-  survives swipe-away, BootReceiver, POST_NOTIFICATIONS permission,
+  "ScamShield is protecting you", keeps the process (and the SMS receiver
+  on the Application context) alive after swipe-away, BootReceiver,
+  POST_NOTIFICATIONS permission,
   one-time Samsung battery exemption prompt.
 - UI polish: launcher icon (adaptive, #1B5E20), splash screen, first-launch
   permission explainer, animated risk gauge (arc), empty states, filter chips
