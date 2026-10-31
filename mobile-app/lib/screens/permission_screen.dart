@@ -51,8 +51,8 @@ class PermissionScreen extends StatelessWidget {
               const _PrivacyPoint(
                 icon: Icons.lock_outline,
                 text:
-                    'Only a SHA-256 hash of suspicious indicators is ever sent '
-                    'to the cloud — your message text stays private.',
+                    'Message text is sent securely for scoring but never '
+                    'stored. Only hashes of suspicious links are kept.',
               ),
               const _PrivacyPoint(
                 icon: Icons.storage_outlined,

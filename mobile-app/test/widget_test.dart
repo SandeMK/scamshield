@@ -239,7 +239,7 @@ void main() {
       await tester.pumpWidget(_wrap(PermissionScreen(onDone: () {})));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('SHA-256'), findsOneWidget);
+      expect(find.textContaining('sent securely for scoring'), findsOneWidget);
       expect(find.textContaining('scored on your device'), findsOneWidget);
       expect(find.textContaining('No message content'), findsOneWidget);
     });
