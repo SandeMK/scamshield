@@ -61,8 +61,6 @@ MAX_INTEL_URLS = 3        # NFR-01: bound DB round-trips per message (<= 2 queri
 DEFAULT_NOTIFICATION_PREFS = {
     "alert_threshold": "MEDIUM_RISK",
     "retroactive_updates": True,
-    "report_outcomes": True,
-    "digest_frequency": "off",
 }
 RECOVERY_CODE_TTL_S = 600  # dev-stub only; the Supabase Auth path uses its own OTP expiry
 
@@ -411,8 +409,8 @@ class NotificationPrefsRequest(BaseModel):
     alert_threshold: str = Field(
         ..., pattern="^(SAFE|LOW_RISK|MEDIUM_RISK|HIGH_RISK|CRITICAL)$")
     retroactive_updates: bool = True
-    report_outcomes: bool = True
-    digest_frequency: str = Field(..., pattern="^(off|daily|weekly)$")
+    # report_outcomes / digest_frequency were dropped from FR-15; older app
+    # builds still send them and pydantic ignores the extra fields.
 
 
 class RecoveryRequest(BaseModel):
@@ -632,8 +630,6 @@ def update_notifications(req: NotificationPrefsRequest):
     prefs = {
         "alert_threshold": req.alert_threshold,
         "retroactive_updates": req.retroactive_updates,
-        "report_outcomes": req.report_outcomes,
-        "digest_frequency": req.digest_frequency,
     }
     profile = profiles.update_notification_prefs(req.device_id, prefs)
     if profile is None:

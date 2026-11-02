@@ -11,6 +11,7 @@ import 'screens/home_screen.dart';
 import 'screens/permission_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/simulator_screen.dart';
+import 'services/alert_tap_channel.dart';
 import 'services/scan_store.dart';
 import 'services/share_channel.dart';
 import 'services/sms_channel.dart';
@@ -85,6 +86,27 @@ class _RootScaffoldState extends State<RootScaffold> {
     );
     ShareChannel.listenForSignal(_pullShared);
     _pullShared();
+    AlertTapChannel.listenForSignal(_pullAlertTap);
+    _pullAlertTap();
+  }
+
+  /// A tapped alert notification opens the Scans tab and that scan's detail
+  /// sheet (on top of anything already open, which is closed first).
+  Future<void> _pullAlertTap() async {
+    final String? scanId;
+    try {
+      scanId = await AlertTapChannel.pullScanId();
+    } catch (_) {
+      return; // no Android host (tests)
+    }
+    if (scanId == null || !mounted) return;
+    setState(() => _index = 0);
+    await ScanStore.instance.load();
+    final scan =
+        ScanStore.instance.scans.where((s) => s.id == scanId).firstOrNull;
+    if (scan == null || !mounted) return;
+    Navigator.of(context).popUntil((route) => route.isFirst);
+    showScanDetail(context, scan);
   }
 
   Future<void> _pullShared() async {

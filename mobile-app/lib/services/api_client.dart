@@ -106,8 +106,6 @@ class ApiClient {
     required String deviceId,
     required String alertThreshold,
     required bool retroactiveUpdates,
-    required bool reportOutcomes,
-    required String digestFrequency,
   }) async {
     final (base, key) = await _config();
     final resp = await http
@@ -117,8 +115,6 @@ class ApiClient {
               'device_id': deviceId,
               'alert_threshold': alertThreshold,
               'retroactive_updates': retroactiveUpdates,
-              'report_outcomes': reportOutcomes,
-              'digest_frequency': digestFrequency,
             }))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {

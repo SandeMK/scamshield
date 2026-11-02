@@ -238,7 +238,7 @@
         },
         "body": {
           "mode": "raw",
-          "raw": "{\n  \"device_id\": \"demo-device-1\",\n  \"alert_threshold\": \"HIGH_RISK\",\n  \"retroactive_updates\": true,\n  \"report_outcomes\": true,\n  \"digest_frequency\": \"weekly\"\n}"
+          "raw": "{\n  \"device_id\": \"demo-device-1\",\n  \"alert_threshold\": \"HIGH_RISK\",\n  \"retroactive_updates\": true\n}"
         }
       }
     },
