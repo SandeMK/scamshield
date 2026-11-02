@@ -37,7 +37,7 @@ are the authoritative spec for contracts and naming.
   BootReceiver.kt, MainActivity.kt (cached engine + battery prompt).
   Dart: lib/screens/ (home, simulator, dashboard, settings, permission),
   lib/services/ (api_client, scan_store, sms_channel, share_channel,
-  guardian_channel, device_id, local_rules).
+  guardian_channel, alert_tap_channel, device_id, local_rules).
   Default API URL: https://scamshield-api-4ywt.onrender.com. Requires Flutter >= 3.22.
 - `fintech-client/` — third-party interoperability demo (client.py).
 - `api/postman_collection.json` — contract tests (§14.4).
@@ -116,10 +116,21 @@ predates the current spec's due date and was stale; corrected here).
   diagrams. Trusted contact number: shared_preferences key
   'guardianContact', local-only, never sent to Supabase (per §4 decision).
 - UC-13 Manage Profile & Notifications (FR-14/15/16) — done, mobile +
-  backend. `device_id`: 32-hex anonymous id generated client-side at first
-  use (lib/services/device_id.dart, no new pub dependency), persisted in
-  shared_preferences, sent with every /api/v1/report call regardless of
-  whether a profile exists. Backend: `ProfileStore`/`SupabaseProfileStore`
+  backend. `device_id`: 32-hex anonymous id (lib/services/device_id.dart,
+  no new pub dependency). Since Nov 2026 it is derived natively from
+  ANDROID_ID — SHA-256("scamshield-device:" + ANDROID_ID), first 32 hex,
+  via 'scamshield/device' MethodChannel (ScamShieldApp.stableDeviceId) —
+  so it survives uninstall/reinstall on the same phone (same signing key)
+  and the profile reappears without recovery; the derived id wins over an
+  older stored random one (one-time recovery for installs that predate
+  it). Falls back to stored/random when the channel is absent (tests).
+  Persisted in shared_preferences, sent with every /api/v1/report call
+  regardless of whether a profile exists. FR-15 alert threshold is
+  enforced on the phone (ScanStore.meetsAlertThreshold, local copy under
+  'alertThreshold'; HIGH_RISK when no profile); report_outcomes and
+  digest_frequency were removed. Tapping a scam-alert notification opens
+  that scan's detail sheet ('scamshield/alert_tap' channel, same
+  stash-then-signal pattern as share). Backend: `ProfileStore`/`SupabaseProfileStore`
   in api/main.py mirror the ThreatIntelClient stub/live split exactly.
   FR-14: POST /api/v1/profile upserts on device_id (PostgREST
   `on_conflict=device_id` + `resolution=merge-duplicates`), seeding
@@ -156,13 +167,17 @@ predates the current spec's due date and was stale; corrected here).
    reports reached the DB from 24 Sep to 28 Oct. Check with
    `select count(*) from information_schema.columns where table_name =
    'reports' and column_name = 'device_id'` (must be 1).
-6. **Supabase dashboard → Authentication → Email Templates → Magic Link**:
-   add `{{ .Token }}` to the template body. Without this, FR-16's recovery
-   email is a magic-link button with no visible 6-digit code, and the
-   verify step (which expects a token) has nothing for the user to type.
-   This is a one-time manual dashboard change — cannot be done from code.
-7. Supabase free-tier's built-in email sending is low-volume (intended for
-   testing, not production traffic) — fine for the pilot/demo, worth a
+6. ~~FR-16 recovery email template~~ — done 2 Nov 2026, verified working
+   on the phone. Free-tier Supabase can't edit templates on its built-in
+   sender, so Auth now sends through **Brevo custom SMTP**
+   (smtp-relay.brevo.com:587, Brevo SMTP login + SMTP key, verified Brevo
+   sender). Both **Confirm signup** (first request for an email — the
+   OTP call uses create_user) and **Magic Link** (later requests)
+   templates carry `{{ .Token }}`. Email OTP length must stay 6 (API and
+   app validate exactly 6 digits).
+7. Brevo free tier: 300 emails/day; Supabase enforces a 60 s minimum
+   between emails, and a too-fast resend is dropped silently (API still
+   returns code_sent). Free-address senders may land in spam — worth a
    one-line caveat in the report if FR-16 is demoed live.
 8. ~~URLhaus feed~~ — done 28 Oct 2026. Keyless `csv_recent` is 410 Gone;
    ingest.py uses the authenticated API (v1/urls/recent, Auth-Key header)

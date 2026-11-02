@@ -28,16 +28,29 @@ class SmsProtectionService : Service() {
         private const val ALERT_CHANNEL_ID = "scamshield_alerts"
         private const val FGS_NOTIFICATION_ID = 1
 
-        fun postAlertNotification(context: Context, title: String, body: String) {
+        fun postAlertNotification(context: Context, title: String, body: String, scanId: String?) {
             val nm = context.getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            val notificationId = System.currentTimeMillis().toInt()
+            // Tapping the alert opens the app on that scan's detail sheet.
+            // A per-notification request code keeps each alert's scan id.
+            val open = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(MainActivity.EXTRA_OPEN_SCAN_ID, scanId ?: "")
+            }
+            val pi = PendingIntent.getActivity(
+                context, notificationId, open,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
             val notification = NotificationCompat.Builder(context, ALERT_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentTitle(title)
                 .setContentText(body)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pi)
                 .setAutoCancel(true)
                 .build()
-            nm.notify(System.currentTimeMillis().toInt(), notification)
+            nm.notify(notificationId, notification)
         }
 
         /** 67-char parts (UCS-2 multipart limit), never splitting a surrogate pair. */
@@ -106,7 +119,7 @@ class SmsProtectionService : Service() {
                 "alert" -> {
                     val title = call.argument<String>("title") ?: "Scam detected"
                     val body = call.argument<String>("body") ?: ""
-                    postAlertNotification(this, title, body)
+                    postAlertNotification(this, title, body, call.argument<String>("scanId"))
                     result.success(null)
                 }
                 "guardianAlert" -> {

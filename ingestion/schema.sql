@@ -83,15 +83,24 @@ create table if not exists user_profiles (
     email               text unique,
     notification_prefs  jsonb not null default '{
         "alert_threshold": "MEDIUM_RISK",
-        "retroactive_updates": true,
-        "report_outcomes": true,
-        "digest_frequency": "off"
+        "retroactive_updates": true
     }'::jsonb,
     total_scans         integer not null default 0,
     total_reports       integer not null default 0,
     created_at          timestamptz not null default now(),
     last_active         timestamptz not null default now()
 );
+
+-- FR-15 trimmed (Nov 2026): report_outcomes and digest_frequency removed.
+-- "create table if not exists" leaves an existing table's default alone,
+-- so reset it and strip the two keys from rows saved before the change.
+alter table user_profiles alter column notification_prefs set default '{
+    "alert_threshold": "MEDIUM_RISK",
+    "retroactive_updates": true
+}'::jsonb;
+update user_profiles
+   set notification_prefs = notification_prefs - 'report_outcomes' - 'digest_frequency'
+ where notification_prefs ? 'report_outcomes' or notification_prefs ? 'digest_frequency';
 
 create index if not exists user_profiles_device_id_idx on user_profiles (device_id);
 create index if not exists user_profiles_email_idx on user_profiles (email);

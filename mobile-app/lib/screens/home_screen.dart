@@ -183,19 +183,21 @@ class _ScanCard extends StatelessWidget {
             '${scan.offline ? ' · cloud offline' : ''}'
             '${scan.source == 'simulated' ? ' · simulated' : ''}'
             '${scan.source == 'shared' ? ' · shared' : ''}'),
-        onTap: () => _showDetail(context),
+        onTap: () => showScanDetail(context, scan),
       ),
     );
   }
+}
 
-  void _showDetail(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (context) => _ScanDetail(scan: scan),
-    );
-  }
+/// Opens the detail sheet for [scan] — from a scan card, or from a tapped
+/// alert notification (RootScaffold).
+Future<void> showScanDetail(BuildContext context, Scan scan) {
+  return showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    showDragHandle: true,
+    builder: (context) => _ScanDetail(scan: scan),
+  );
 }
 
 // ── Scan detail sheet ────────────────────────────────────────────────────────

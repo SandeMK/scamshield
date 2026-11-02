@@ -20,6 +20,29 @@ const _notifyChannel = MethodChannel('scamshield/notify');
 
 const guardianAlertPrefix = 'ScamShield Guardian Alert:';
 
+/// Classification labels in rising order of risk (FR-15 alert threshold).
+const riskLevels = ['SAFE', 'LOW_RISK', 'MEDIUM_RISK', 'HIGH_RISK', 'CRITICAL'];
+
+/// Threshold used when the device has no profile: alert on HIGH_RISK and
+/// CRITICAL only, the behaviour before FR-15 was enforced.
+const defaultAlertThreshold = 'HIGH_RISK';
+
+/// shared_preferences key holding a local copy of the profile's
+/// alert_threshold. Settings writes it whenever the profile is loaded or the
+/// preference saved, so alerts follow it offline and with the app swiped away.
+const alertThresholdKey = 'alertThreshold';
+
+/// FR-15: true when [classification] is at or above [threshold]. A missing
+/// classification (offline scan) never alerts; an unknown threshold falls
+/// back to [defaultAlertThreshold].
+bool meetsAlertThreshold(String? classification, String? threshold) {
+  final c = riskLevels.indexOf(classification ?? '');
+  if (c < 0) return false;
+  var t = riskLevels.indexOf(threshold ?? '');
+  if (t < 0) t = riskLevels.indexOf(defaultAlertThreshold);
+  return c >= t;
+}
+
 /// FR-09 Guardian Alert SMS body for [text], or null when [text] is itself a
 /// Guardian Alert. The alert quotes the scam, so it scores CRITICAL too; if
 /// the trusted contact also runs ScamShield (or is the other SIM on the same
@@ -43,9 +66,16 @@ class ScanStore extends ChangeNotifier {
   final List<Scan> scans = [];
   int reportsSent = 0;
   bool loaded = false;
+  Future<void>? _loading;
 
-  Future<void> load() async {
-    if (loaded) return;
+  /// Loads persisted scans once; concurrent callers (startup and a tapped
+  /// alert) share one in-flight load. Setting [loaded] false allows a reload.
+  Future<void> load() {
+    if (loaded) return Future.value();
+    return _loading ??= _load().whenComplete(() => _loading = null);
+  }
+
+  Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('scans');
     if (raw != null) {
@@ -89,19 +119,29 @@ class ScanStore extends ChangeNotifier {
     }
     notifyListeners();
     await _persist();
-    _maybePostAlert(scan);
+    _maybePostAlert(scan); // FR-15: follows the saved alert threshold
     _maybeGuardianAlert(scan); // FR-09: fires only on the returned cloud result
     return scan;
   }
 
-  void _maybePostAlert(Scan scan) {
+  /// Posts a phone notification when the cloud classification meets the
+  /// user's alert threshold (FR-15). Offline scans never alert.
+  Future<void> _maybePostAlert(Scan scan) async {
     final c = scan.result?.classification;
-    if (c != 'HIGH_RISK' && c != 'CRITICAL') return;
-    final label = c == 'CRITICAL' ? 'CRITICAL scam' : 'High-risk message';
+    final prefs = await SharedPreferences.getInstance();
+    if (!meetsAlertThreshold(c, prefs.getString(alertThresholdKey))) return;
+    final label = switch (c) {
+      'CRITICAL' => 'CRITICAL scam',
+      'HIGH_RISK' => 'High-risk message',
+      'MEDIUM_RISK' => 'Suspicious message',
+      'LOW_RISK' => 'Low-risk message',
+      _ => 'Safe message',
+    };
     final preview = scan.text.length > 60 ? '${scan.text.substring(0, 60)}…' : scan.text;
     _notifyChannel.invokeMethod('alert', {
       'title': '$label from ${scan.sender}',
       'body': preview,
+      'scanId': scan.id, // tapping the alert opens this scan's detail sheet
     }).catchError((_) {}); // non-fatal if service not running
   }
 

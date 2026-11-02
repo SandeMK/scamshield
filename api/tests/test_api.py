@@ -123,18 +123,31 @@ def test_notification_prefs_update_persists():
         "device_id": "dev-4",
         "alert_threshold": "HIGH_RISK",
         "retroactive_updates": False,
-        "report_outcomes": True,
+    }, headers=KEY)
+    assert r.status_code == 200
+    assert r.json()["notification_prefs"] == {
+        "alert_threshold": "HIGH_RISK", "retroactive_updates": False}
+
+
+def test_notification_prefs_ignores_removed_fields_from_old_clients():
+    # Builds released before FR-15 was trimmed still send these two fields.
+    client.post("/api/v1/profile", json={"device_id": "dev-4b"}, headers=KEY)
+    r = client.patch("/api/v1/profile/notifications", json={
+        "device_id": "dev-4b",
+        "alert_threshold": "CRITICAL",
+        "retroactive_updates": True,
+        "report_outcomes": False,
         "digest_frequency": "weekly",
     }, headers=KEY)
     assert r.status_code == 200
-    assert r.json()["notification_prefs"]["alert_threshold"] == "HIGH_RISK"
+    assert r.json()["notification_prefs"] == {
+        "alert_threshold": "CRITICAL", "retroactive_updates": True}
 
 
 def test_notification_prefs_requires_existing_profile():
     r = client.patch("/api/v1/profile/notifications", json={
         "device_id": "never-created",
         "alert_threshold": "SAFE",
-        "digest_frequency": "off",
     }, headers=KEY)
     assert r.status_code == 404
 

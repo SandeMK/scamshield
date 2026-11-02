@@ -32,8 +32,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   String _alertThreshold = 'MEDIUM_RISK';
   bool _retroactiveUpdates = true;
-  bool _reportOutcomes = true;
-  String _digestFrequency = 'off';
   String _notifStatus = '';
 
   final _recoveryEmail = TextEditingController();
@@ -73,7 +71,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _deviceId = await DeviceId.get();
     try {
       final profile = await ApiClient().getProfile(_deviceId!);
-      if (profile != null) _applyProfile(profile);
+      if (profile != null) {
+        _applyProfile(profile);
+      } else {
+        // 404: no profile for this device, so alerts use the default
+        // threshold. Offline keeps the cached value (catch below).
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove(alertThresholdKey);
+      }
     } catch (_) {} // offline: fall through to the create-profile form
     if (mounted) setState(() => _profileLoading = false);
   }
@@ -85,8 +90,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = (profile['notification_prefs'] as Map?) ?? {};
     _alertThreshold = prefs['alert_threshold'] ?? 'MEDIUM_RISK';
     _retroactiveUpdates = prefs['retroactive_updates'] ?? true;
-    _reportOutcomes = prefs['report_outcomes'] ?? true;
-    _digestFrequency = prefs['digest_frequency'] ?? 'off';
+    _cacheAlertThreshold(_alertThreshold);
+  }
+
+  /// FR-15: ScanStore reads the threshold from local storage, not the API,
+  /// so alerts follow it offline and while only the foreground service runs.
+  Future<void> _cacheAlertThreshold(String threshold) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(alertThresholdKey, threshold);
   }
 
   // FR-14: opt-in from Settings, independent of the anonymous device_id
@@ -124,9 +135,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         deviceId: _deviceId!,
         alertThreshold: _alertThreshold,
         retroactiveUpdates: _retroactiveUpdates,
-        reportOutcomes: _reportOutcomes,
-        digestFrequency: _digestFrequency,
       );
+      await _cacheAlertThreshold(_alertThreshold);
       setState(() => _notifStatus = 'Preferences saved.');
     } catch (e) {
       setState(() => _notifStatus = 'Could not save preferences: $e');
@@ -339,24 +349,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: const Text('Retroactive re-classification alerts'),
               value: _retroactiveUpdates,
               onChanged: (v) => setState(() => _retroactiveUpdates = v),
-            ),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Report-outcome alerts'),
-              value: _reportOutcomes,
-              onChanged: (v) => setState(() => _reportOutcomes = v),
-            ),
-            const SizedBox(height: 4),
-            DropdownButtonFormField<String>(
-              initialValue: _digestFrequency,
-              decoration: const InputDecoration(
-                  labelText: 'Digest frequency', border: OutlineInputBorder()),
-              items: const [
-                DropdownMenuItem(value: 'off', child: Text('Off')),
-                DropdownMenuItem(value: 'daily', child: Text('Daily')),
-                DropdownMenuItem(value: 'weekly', child: Text('Weekly')),
-              ],
-              onChanged: (v) => setState(() => _digestFrequency = v!),
             ),
             const SizedBox(height: 12),
             FilledButton(

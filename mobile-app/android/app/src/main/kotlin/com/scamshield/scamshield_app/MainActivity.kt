@@ -18,6 +18,7 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val SEND_SMS_REQUEST_CODE = 101
+        const val EXTRA_OPEN_SCAN_ID = "open_scan_id"
     }
 
     private var pendingSendSmsResult: MethodChannel.Result? = null
@@ -27,7 +28,23 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         handleShareIntent(intent)
+        // Skip on recreation: a relaunch from Recents replays the original
+        // intent, and the alert's scan must not pop open a second time.
+        if (savedInstanceState == null) handleAlertTap(intent)
         setupGuardianChannel()
+    }
+
+    // Alert notification tapped (see SmsProtectionService.postAlertNotification).
+    // Same stash-then-signal pattern as handleShareIntent: Dart pulls the id
+    // on a cold start, and the signal covers a warm isolate.
+    private fun handleAlertTap(intent: Intent?) {
+        if (intent?.hasExtra(EXTRA_OPEN_SCAN_ID) != true) return
+        ScamShieldApp.pendingOpenScanId = intent.getStringExtra(EXTRA_OPEN_SCAN_ID) ?: ""
+        intent.removeExtra(EXTRA_OPEN_SCAN_ID)
+        FlutterEngineCache.getInstance().get(ScamShieldApp.ENGINE_ID)?.let { engine ->
+            MethodChannel(engine.dartExecutor.binaryMessenger, ScamShieldApp.ALERT_TAP_CHANNEL)
+                .invokeMethod("onAlertTap", null)
+        }
     }
 
     // FR-09: SEND_SMS is requested only when the user opts in to Guardian
@@ -73,6 +90,7 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         handleShareIntent(intent)
+        handleAlertTap(intent)
     }
 
     // Some senders (e.g. Messages, due to this Activity's empty taskAffinity)

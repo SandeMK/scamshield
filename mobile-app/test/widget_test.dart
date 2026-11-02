@@ -3,12 +3,15 @@
 /// Coverage:
 ///  - util.dart: classificationColor, classificationLabel
 ///  - services/local_rules.dart: runLocalRules
-///  - services/scan_store.dart: guardianAlertMessage (FR-09)
+///  - services/scan_store.dart: guardianAlertMessage (FR-09),
+///    meetsAlertThreshold (FR-15)
+///  - services/device_id.dart: stable Android-derived id, fallbacks
 ///  - screens/permission_screen.dart: render + button callback
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
 ///    report button disabled state, failed report (API 503)
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -17,6 +20,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scamshield_app/models.dart';
 import 'package:scamshield_app/screens/home_screen.dart';
 import 'package:scamshield_app/screens/permission_screen.dart';
+import 'package:scamshield_app/services/device_id.dart';
 import 'package:scamshield_app/services/local_rules.dart';
 import 'package:scamshield_app/services/scan_store.dart';
 import 'package:scamshield_app/util.dart';
@@ -73,6 +77,13 @@ void main() {
     ScanStore.instance.scans.clear();
     ScanStore.instance.reportsSent = 0;
     ScanStore.instance.loaded = false;
+    // Without a mock, a platform call goes to the real (absent) host and
+    // never completes under testWidgets' fake clock, stalling DeviceId.get().
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .defaultBinaryMessenger
+        .setMockMethodCallHandler(
+            const MethodChannel('scamshield/device'), (_) async => null);
+    DeviceId.resetCache();
   });
 
   // ── classificationColor ─────────────────────────────────────────────────────
@@ -248,6 +259,66 @@ void main() {
       final alert = guardianAlertMessage(longScam)!;
       expect(guardianAlertMessage(alert), isNull);
       expect(guardianAlertMessage('  $alert'), isNull);
+    });
+  });
+
+  // ── DeviceId ────────────────────────────────────────────────────────────────
+
+  group('DeviceId', () {
+    const channel = MethodChannel('scamshield/device');
+    // Lazy: the test binding only exists once a test is running.
+    TestDefaultBinaryMessenger messenger() => TestWidgetsFlutterBinding
+        .ensureInitialized()
+        .defaultBinaryMessenger;
+    final a = 'a' * 32, b = 'b' * 32;
+
+    tearDown(() {
+      messenger().setMockMethodCallHandler(channel, null);
+      DeviceId.resetCache();
+    });
+
+    test('Android-derived id wins and replaces an older stored random id',
+        () async {
+      SharedPreferences.setMockInitialValues({'deviceId': a});
+      messenger().setMockMethodCallHandler(channel, (_) async => b);
+      expect(await DeviceId.get(), b);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('deviceId'), b);
+    });
+
+    test('keeps the stored id when the platform has no stable id', () async {
+      SharedPreferences.setMockInitialValues({'deviceId': a});
+      messenger().setMockMethodCallHandler(channel, (_) async => null);
+      expect(await DeviceId.get(), a);
+    });
+
+    test('ignores a malformed platform value and generates a 32-hex id',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      messenger().setMockMethodCallHandler(channel, (_) async => 'not-an-id');
+      expect(await DeviceId.get(), matches(RegExp(r'^[0-9a-f]{32}$')));
+    });
+  });
+
+  // ── meetsAlertThreshold (FR-15) ─────────────────────────────────────────────
+
+  group('meetsAlertThreshold', () {
+    test('alerts at and above the saved threshold only', () {
+      expect(meetsAlertThreshold('LOW_RISK', 'MEDIUM_RISK'), isFalse);
+      expect(meetsAlertThreshold('MEDIUM_RISK', 'MEDIUM_RISK'), isTrue);
+      expect(meetsAlertThreshold('CRITICAL', 'MEDIUM_RISK'), isTrue);
+      expect(meetsAlertThreshold('HIGH_RISK', 'CRITICAL'), isFalse);
+      expect(meetsAlertThreshold('SAFE', 'SAFE'), isTrue);
+    });
+
+    test('no saved threshold (no profile) keeps the HIGH_RISK default', () {
+      expect(meetsAlertThreshold('MEDIUM_RISK', null), isFalse);
+      expect(meetsAlertThreshold('HIGH_RISK', null), isTrue);
+      expect(meetsAlertThreshold('MEDIUM_RISK', 'bogus'), isFalse);
+    });
+
+    test('an offline scan (no cloud classification) never alerts', () {
+      expect(meetsAlertThreshold(null, 'SAFE'), isFalse);
     });
   });
 
