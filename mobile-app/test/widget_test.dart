@@ -6,9 +6,12 @@
 ///  - services/scan_store.dart: guardianAlertMessage (FR-09),
 ///    meetsAlertThreshold (FR-15)
 ///  - services/device_id.dart: stable Android-derived id, fallbacks
+///  - services/scan_store.dart: retroactive re-check (FR-15)
 ///  - screens/permission_screen.dart: render + button callback
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
 ///    report button disabled state, failed report (API 503)
+
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -297,6 +300,120 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       messenger().setMockMethodCallHandler(channel, (_) async => 'not-an-id');
       expect(await DeviceId.get(), matches(RegExp(r'^[0-9a-f]{32}$')));
+    });
+  });
+
+  // ── Retroactive re-classification (FR-15) ───────────────────────────────────
+
+  group('Retroactive re-check', () {
+    const notify = MethodChannel('scamshield/notify');
+    TestDefaultBinaryMessenger messenger() =>
+        TestWidgetsFlutterBinding.ensureInitialized().defaultBinaryMessenger;
+    final alerts = <MethodCall>[];
+
+    ScoreResult result(String cls, {bool intel = false}) => ScoreResult(
+          riskScore: riskLevels.indexOf(cls) * 20,
+          classification: cls,
+          mlConfidence: 0.4,
+          ruleSubScore: 30,
+          explanationCodes: [
+            if (intel) ExplanationCode(code: 'INTEL_MATCH', detail: 'match'),
+            ExplanationCode(code: 'URL_PRESENT', detail: 'link'),
+            ExplanationCode(code: 'ML_BENIGN_PATTERN', detail: 'ml'),
+          ],
+          modelVersion: 'v1.0.0-test',
+        );
+
+    Scan scan(String id,
+            {String text = 'Track your parcel at parcel-track.xyz/abc',
+             ScoreResult? r,
+             bool reported = false,
+             int daysAgo = 1}) =>
+        Scan(
+          id: id,
+          text: text,
+          sender: '+27821234567',
+          timestamp: DateTime.now().subtract(Duration(days: daysAgo)),
+          source: 'sms',
+          result: r,
+          reported: reported,
+        );
+
+    String apiJson(String cls, {bool intel = false}) =>
+        jsonEncode(result(cls, intel: intel).toJson());
+
+    setUp(() {
+      alerts.clear();
+      messenger().setMockMethodCallHandler(notify, (call) async {
+        alerts.add(call);
+        return null;
+      });
+    });
+    tearDown(() => messenger().setMockMethodCallHandler(notify, null));
+
+    test('candidates: recent, cloud-scored, with a link, not CRITICAL, '
+        'no intel match yet, not reported by this user', () {
+      final eligible = scan('ok', r: result('LOW_RISK'));
+      final picked = recheckCandidates([
+        eligible,
+        scan('nolink', text: 'Hi, lunch at 1?', r: result('SAFE')),
+        scan('critical', r: result('CRITICAL')),
+        scan('intel', r: result('HIGH_RISK', intel: true)),
+        scan('reported', r: result('LOW_RISK'), reported: true),
+        scan('old', r: result('LOW_RISK'), daysAgo: 20),
+        scan('offline'),
+      ], DateTime.now());
+      expect(picked.map((s) => s.id), ['ok']);
+    });
+
+    test('upgrade only on a new intel match that raises the level', () {
+      expect(isRetroactiveUpgrade(
+          result('LOW_RISK'), result('CRITICAL', intel: true)), isTrue);
+      expect(isRetroactiveUpgrade(result('LOW_RISK'), result('HIGH_RISK')),
+          isFalse); // e.g. a model update, no new intel
+      expect(isRetroactiveUpgrade(
+          result('MEDIUM_RISK'), result('MEDIUM_RISK', intel: true)), isFalse);
+    });
+
+    test('newly flagged link re-classifies the scan and alerts', () async {
+      final s = scan('s1', r: result('LOW_RISK'));
+      _seedStore([s]);
+      final n = await http.runWithClient(
+          () => ScanStore.instance.recheckRecent(),
+          () => MockClient(
+              (_) async => http.Response(apiJson('CRITICAL', intel: true), 200)));
+      expect(n, 1);
+      expect(s.result!.classification, 'CRITICAL');
+      expect(s.previousClassification, 'LOW_RISK');
+      expect(s.reclassifiedAt, isNotNull);
+      expect(alerts.single.method, 'alert');
+      expect((alerts.single.arguments as Map)['scanId'], 's1');
+    });
+
+    test('no change from the API leaves the scan untouched, no alert',
+        () async {
+      final s = scan('s2', r: result('LOW_RISK'));
+      _seedStore([s]);
+      final n = await http.runWithClient(
+          () => ScanStore.instance.recheckRecent(),
+          () => MockClient(
+              (_) async => http.Response(apiJson('LOW_RISK'), 200)));
+      expect(n, 0);
+      expect(s.previousClassification, isNull);
+      expect(alerts, isEmpty);
+    });
+
+    test('retroactive alerts switched off: re-classified silently', () async {
+      SharedPreferences.setMockInitialValues({retroactiveUpdatesKey: false});
+      final s = scan('s3', r: result('LOW_RISK'));
+      _seedStore([s]);
+      final n = await http.runWithClient(
+          () => ScanStore.instance.recheckRecent(),
+          () => MockClient(
+              (_) async => http.Response(apiJson('CRITICAL', intel: true), 200)));
+      expect(n, 1);
+      expect(s.result!.classification, 'CRITICAL');
+      expect(alerts, isEmpty);
     });
   });
 

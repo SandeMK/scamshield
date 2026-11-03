@@ -113,6 +113,10 @@ bool _onDomain(String host, List<String> domains) =>
   return null;
 }
 
+/// True when [text] contains a link (same pattern as the local rules), so a
+/// later threat-intel match could change its score.
+bool hasLink(String text) => _linkRe.hasMatch(text);
+
 class LocalRuleResult {
   final int score; // 0-100
   final List<String> flags;

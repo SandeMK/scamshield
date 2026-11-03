@@ -6,6 +6,7 @@
 ///   3. NFR-08 offline fallback: keep local result, mark cloud offline
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -57,6 +58,59 @@ String? guardianAlertMessage(String text) {
       'phone you are the trusted contact for was just classified CRITICAL '
       '(likely scam). They may need help. Message: "$preview"';
 }
+
+// ── FR-15 retroactive re-classification ─────────────────────────────────────
+// The server keeps no scans, so only the phone knows which messages carried
+// a link that the shared threat DB has learned about since (daily feeds,
+// other users' reports). It re-scores recent link-bearing scans through the
+// same /score/sms endpoint, keeping scoring in one place.
+
+/// shared_preferences key: local copy of the profile's retroactive_updates
+/// (absent = on, the server default).
+const retroactiveUpdatesKey = 'retroactiveUpdates';
+const _lastRecheckKey = 'lastRecheckAt';
+const recheckWindow = Duration(days: 14);
+const recheckMaxPerRun = 25;
+const recheckMinInterval = Duration(hours: 1);
+const recheckPeriod = Duration(hours: 6);
+
+bool _hasIntelMatch(ScoreResult? r) =>
+    r?.explanationCodes.any((c) => c.code == 'INTEL_MATCH') ?? false;
+
+/// Scans worth re-checking, newest first: cloud-scored, carrying a link, from
+/// the last [recheckWindow], below CRITICAL with no intel match yet, and not
+/// reported by this user (their own scam report adds the link to the DB and
+/// must not come back as a "re-classified" alert).
+List<Scan> recheckCandidates(List<Scan> scans, DateTime now) => scans
+    .where((s) =>
+        s.result != null &&
+        !s.reported &&
+        s.result!.classification != 'CRITICAL' &&
+        !_hasIntelMatch(s.result) &&
+        now.difference(s.timestamp) <= recheckWindow &&
+        hasLink(s.text))
+    .take(recheckMaxPerRun)
+    .toList();
+
+/// A re-check result replaces the stored one only when it gained an
+/// INTEL_MATCH and raised the risk level — so a model update alone never
+/// re-classifies, and an earlier warning is never lowered.
+bool isRetroactiveUpgrade(ScoreResult old, ScoreResult fresh) =>
+    !_hasIntelMatch(old) &&
+    _hasIntelMatch(fresh) &&
+    riskLevels.indexOf(fresh.classification) >
+        riskLevels.indexOf(old.classification);
+
+String _alertLabel(String? c) => switch (c) {
+      'CRITICAL' => 'CRITICAL scam',
+      'HIGH_RISK' => 'High-risk message',
+      'MEDIUM_RISK' => 'Suspicious message',
+      'LOW_RISK' => 'Low-risk message',
+      _ => 'Safe message',
+    };
+
+String _preview(String text) =>
+    text.length > 60 ? '${text.substring(0, 60)}…' : text;
 
 class ScanStore extends ChangeNotifier {
   ScanStore._();
@@ -130,19 +184,89 @@ class ScanStore extends ChangeNotifier {
     final c = scan.result?.classification;
     final prefs = await SharedPreferences.getInstance();
     if (!meetsAlertThreshold(c, prefs.getString(alertThresholdKey))) return;
-    final label = switch (c) {
-      'CRITICAL' => 'CRITICAL scam',
-      'HIGH_RISK' => 'High-risk message',
-      'MEDIUM_RISK' => 'Suspicious message',
-      'LOW_RISK' => 'Low-risk message',
-      _ => 'Safe message',
-    };
-    final preview = scan.text.length > 60 ? '${scan.text.substring(0, 60)}…' : scan.text;
     _notifyChannel.invokeMethod('alert', {
-      'title': '$label from ${scan.sender}',
-      'body': preview,
+      'title': '${_alertLabel(c)} from ${scan.sender}',
+      'body': _preview(scan.text),
       'scanId': scan.id, // tapping the alert opens this scan's detail sheet
     }).catchError((_) {}); // non-fatal if service not running
+  }
+
+  // ----- FR-15 retroactive re-classification -----
+
+  bool _rechecking = false;
+  Timer? _recheckTimer;
+
+  /// Re-checks every [recheckPeriod] while the process lives (the foreground
+  /// service keeps it alive). Idempotent.
+  void startRecheckTimer() {
+    _recheckTimer ??= Timer.periodic(recheckPeriod, (_) => maybeRecheck());
+  }
+
+  /// Throttled re-check for app open/resume and the timer: at most once per
+  /// [recheckMinInterval]. Returns the number of scans re-classified.
+  Future<int> maybeRecheck() async {
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getInt(_lastRecheckKey);
+    if (last != null &&
+        DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(last)) <
+            recheckMinInterval) {
+      return 0;
+    }
+    return recheckRecent();
+  }
+
+  /// Re-scores [recheckCandidates] one at a time, stopping at the first
+  /// network failure. Re-checks run whether or not alerts are enabled, so
+  /// stored results stay current; only the alert follows the preference.
+  /// No Guardian SMS: the message may be days old (FR-09 covers the first
+  /// result only).
+  Future<int> recheckRecent() async {
+    if (_rechecking) return 0;
+    _rechecking = true;
+    var upgraded = 0;
+    try {
+      await load();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt(_lastRecheckKey, DateTime.now().millisecondsSinceEpoch);
+      for (final scan in recheckCandidates(scans, DateTime.now())) {
+        final ScoreResult fresh;
+        try {
+          fresh = await api.scoreSms(scan.text, scan.sender);
+        } catch (_) {
+          break; // offline or API down: try again next time
+        }
+        final old = scan.result!;
+        if (!isRetroactiveUpgrade(old, fresh)) continue;
+        scan
+          ..previousClassification = old.classification
+          ..reclassifiedAt = DateTime.now()
+          ..result = fresh;
+        upgraded++;
+        await _maybePostRetroactiveAlert(scan, prefs);
+      }
+      if (upgraded > 0) {
+        notifyListeners();
+        await _persist();
+      }
+    } finally {
+      _rechecking = false;
+    }
+    return upgraded;
+  }
+
+  Future<void> _maybePostRetroactiveAlert(
+      Scan scan, SharedPreferences prefs) async {
+    if (prefs.getBool(retroactiveUpdatesKey) == false) return;
+    final c = scan.result?.classification;
+    if (!meetsAlertThreshold(c, prefs.getString(alertThresholdKey))) return;
+    try {
+      await _notifyChannel.invokeMethod('alert', {
+        'title': 'Earlier message from ${scan.sender} is now: ${_alertLabel(c)}',
+        'body': 'Its link was since found in the threat database. '
+            '"${_preview(scan.text)}"',
+        'scanId': scan.id,
+      });
+    } catch (_) {} // non-fatal if service not running
   }
 
   /// FR-09 Guardian Alert. Gated on scan.result, which is only ever set from

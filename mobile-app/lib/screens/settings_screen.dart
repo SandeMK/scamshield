@@ -1,8 +1,11 @@
-/// Settings: API base URL + API key, with a connectivity check.
+/// Settings: service status (read-only), Guardian Alert, threat re-check,
+/// profile + notifications. API URL/key overrides are debug builds only.
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import '../services/api_client.dart';
 import '../services/device_id.dart';
 import '../services/guardian_channel.dart';
@@ -18,7 +21,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   final _url = TextEditingController();
   final _key = TextEditingController();
   final _guardianContact = TextEditingController();
-  String _status = '';
+  String _status = 'Checking...';
+  bool? _connected; // null while checking
   String _guardianStatus = '';
   bool _guardianPermissionGranted = false;
 
@@ -33,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _alertThreshold = 'MEDIUM_RISK';
   bool _retroactiveUpdates = true;
   String _notifStatus = '';
+  String _recheckStatus = '';
 
   final _recoveryEmail = TextEditingController();
   final _recoveryCode = TextEditingController();
@@ -49,6 +54,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         _guardianContact.text = prefs.getString('guardianContact') ?? '';
       });
     });
+    _checkStatus();
     GuardianChannel.hasPermission().then((granted) {
       if (mounted) setState(() => _guardianPermissionGranted = granted);
     });
@@ -78,6 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         // threshold. Offline keeps the cached value (catch below).
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove(alertThresholdKey);
+        await prefs.remove(retroactiveUpdatesKey);
       }
     } catch (_) {} // offline: fall through to the create-profile form
     if (mounted) setState(() => _profileLoading = false);
@@ -90,14 +97,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final prefs = (profile['notification_prefs'] as Map?) ?? {};
     _alertThreshold = prefs['alert_threshold'] ?? 'MEDIUM_RISK';
     _retroactiveUpdates = prefs['retroactive_updates'] ?? true;
-    _cacheAlertThreshold(_alertThreshold);
+    _cacheNotificationPrefs();
   }
 
-  /// FR-15: ScanStore reads the threshold from local storage, not the API,
-  /// so alerts follow it offline and while only the foreground service runs.
-  Future<void> _cacheAlertThreshold(String threshold) async {
+  /// FR-15: ScanStore reads these from local storage, not the API, so
+  /// alerts follow them offline and while only the foreground service runs.
+  Future<void> _cacheNotificationPrefs() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(alertThresholdKey, threshold);
+    await prefs.setString(alertThresholdKey, _alertThreshold);
+    await prefs.setBool(retroactiveUpdatesKey, _retroactiveUpdates);
+  }
+
+  // FR-15 retroactive re-classification, run on demand (also runs on its
+  // own on app open and every 6 h).
+  Future<void> _recheckNow() async {
+    setState(() => _recheckStatus = 'Re-checking recent messages...');
+    final n = await ScanStore.instance.recheckRecent();
+    if (!mounted) return;
+    setState(() => _recheckStatus = n == 0
+        ? 'No changes — no recent link has been newly flagged.'
+        : '$n message${n == 1 ? '' : 's'} re-classified. See the Scans tab.');
   }
 
   // FR-14: opt-in from Settings, independent of the anonymous device_id
@@ -136,7 +155,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         alertThreshold: _alertThreshold,
         retroactiveUpdates: _retroactiveUpdates,
       );
-      await _cacheAlertThreshold(_alertThreshold);
+      await _cacheNotificationPrefs();
       setState(() => _notifStatus = 'Preferences saved.');
     } catch (e) {
       setState(() => _notifStatus = 'Could not save preferences: $e');
@@ -176,19 +195,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Read-only service status: GET /api/v1/health (no API key needed).
+  Future<void> _checkStatus() async {
+    setState(() {
+      _connected = null;
+      _status = 'Checking...';
+    });
+    try {
+      final h = await ApiClient().health();
+      final db = h['db_connected'];
+      if (!mounted) return;
+      setState(() {
+        _connected = true;
+        _status = 'Connected — model ${h['model_version'] ?? '?'} · '
+            'threat database ${db == true ? 'online' : db == false ? 'offline' : 'n/a'}';
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _connected = false;
+        _status = 'Cloud unreachable — scans fall back to on-device checks.';
+      });
+    }
+  }
+
+  // Debug builds only (see the Advanced section in build()).
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('baseUrl', _url.text.trim());
     await prefs.setString('apiKey', _key.text.trim());
-    setState(() => _status = 'Saved. Checking connection...');
-    try {
-      final h = await ApiClient().health();
-      setState(() => _status =
-          'Connected — model ${h['model_version'] ?? '?'}, '
-          'DB: ${h['db_connected'] ?? 'n/a'}');
-    } catch (e) {
-      setState(() => _status = 'Could not reach API: $e');
-    }
+    await _checkStatus();
   }
 
   // FR-09: opt-in from Settings only — never requested at first launch.
@@ -248,30 +284,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Cloud API', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('Use http://10.0.2.2:8000 for the Android emulator with a '
-            'locally running API, or your deployed Render/Cloud Run URL.'),
-        const SizedBox(height: 16),
-        TextField(
-            controller: _url,
-            decoration: const InputDecoration(
-                labelText: 'Base URL', border: OutlineInputBorder())),
-        const SizedBox(height: 12),
-        TextField(
-            controller: _key,
-            decoration: const InputDecoration(
-                labelText: 'API key', border: OutlineInputBorder())),
-        const SizedBox(height: 12),
-        FilledButton(onPressed: _save, child: const Text('Save & test')),
-        const SizedBox(height: 12),
-        Text(_status),
+        Text('Service status', style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: switch (_connected) {
+              null => const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2)),
+              true => const Icon(Icons.cloud_done, color: Color(0xFF2E7D32)),
+              false => const Icon(Icons.cloud_off, color: Color(0xFFC62828)),
+            },
+            title: const Text('ScamShield cloud'),
+            subtitle: Text(_status),
+            trailing: IconButton(
+                tooltip: 'Check again',
+                icon: const Icon(Icons.refresh),
+                onPressed: _connected == null ? null : _checkStatus),
+          ),
+        ),
+        // Developer overrides: compiled out of profile/release builds, so the
+        // API key never appears on screen in a demo or screenshot.
+        if (kDebugMode)
+          ExpansionTile(
+            tilePadding: EdgeInsets.zero,
+            title: const Text('Advanced (developer)'),
+            childrenPadding: const EdgeInsets.only(bottom: 8),
+            children: [
+              const Text('Use http://10.0.2.2:8000 for the Android emulator '
+                  'with a locally running API, or your deployed URL.'),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: _url,
+                  decoration: const InputDecoration(
+                      labelText: 'Base URL', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+              TextField(
+                  controller: _key,
+                  decoration: const InputDecoration(
+                      labelText: 'API key', border: OutlineInputBorder())),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _save, child: const Text('Save & test')),
+            ],
+          ),
         const Divider(height: 40),
         Text('Guardian Alert', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
         const Text(
           'Optional. If a message you receive is classified CRITICAL, '
-          'ScamShield automatically texts this contact — no tapping needed. '
+          'ScamShield automatically texts this contact - no tapping needed. '
           'The number is stored only on this device, never sent to the cloud.',
         ),
         const SizedBox(height: 16),
@@ -290,10 +352,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         const SizedBox(height: 12),
         Text(_guardianStatus),
         const Divider(height: 40),
-        Text('Profile (optional)', style: Theme.of(context).textTheme.titleLarge),
+        Text('Threat re-check', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 4),
         const Text(
-          'Independent of anonymous scanning — create a profile only if you '
+          'Messages with links from the last 14 days are re-checked against '
+          'the latest threat intelligence when the app opens and every 6 '
+          'hours. You are alerted if one turns out to be a known scam.',
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+            icon: const Icon(Icons.refresh),
+            onPressed: _recheckNow,
+            label: const Text('Re-check now')),
+        const SizedBox(height: 8),
+        Text(_recheckStatus),
+        const Divider(height: 40),
+        Text('Profile (optional)',
+            style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 4),
+        const Text(
+          'Independent of anonymous scanning - create a profile only if you '
           'want notification preferences or the ability to recover your '
           'activity on a new install. Everything else works without one.',
         ),

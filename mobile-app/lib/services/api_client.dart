@@ -3,6 +3,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -13,6 +15,9 @@ class ApiClient {
   static const defaultApiKey = 'scamshield-api-key';
 
   Future<(String, String)> _config() async {
+    // Saved overrides apply in debug builds only: release builds hide the
+    // fields, so a stale saved value there could never be corrected.
+    if (!kDebugMode) return (defaultBaseUrl, defaultApiKey);
     final prefs = await SharedPreferences.getInstance();
     return (
       prefs.getString('baseUrl') ?? defaultBaseUrl,

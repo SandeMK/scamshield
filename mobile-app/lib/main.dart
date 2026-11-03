@@ -72,14 +72,19 @@ class RootScaffold extends StatefulWidget {
   State<RootScaffold> createState() => _RootScaffoldState();
 }
 
-class _RootScaffoldState extends State<RootScaffold> {
+class _RootScaffoldState extends State<RootScaffold>
+    with WidgetsBindingObserver {
   int _index = 0;
   StreamSubscription? _smsSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     ScanStore.instance.load();
+    // FR-15 retroactive re-classification: on open, on resume, every 6 h.
+    ScanStore.instance.maybeRecheck();
+    ScanStore.instance.startRecheckTimer();
     _smsSub = SmsChannel.stream().listen(
       (sms) => ScanStore.instance.process(sms.body, sms.sender, 'sms'),
       onError: (_) {},
@@ -117,7 +122,13 @@ class _RootScaffoldState extends State<RootScaffold> {
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) ScanStore.instance.maybeRecheck();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _smsSub?.cancel();
     super.dispose();
   }
