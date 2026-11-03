@@ -60,6 +60,10 @@ class Scan {
   int localScore; // FR-10 immediate local heuristic score
   List<String> localFlags;
   bool reported;
+  // FR-15 retroactive re-classification: set when a later re-check found a
+  // new threat-intel match that raised the classification.
+  String? previousClassification;
+  DateTime? reclassifiedAt;
 
   Scan({
     required this.id,
@@ -72,6 +76,8 @@ class Scan {
     this.localScore = 0,
     this.localFlags = const [],
     this.reported = false,
+    this.previousClassification,
+    this.reclassifiedAt,
   });
 
   factory Scan.fromJson(Map<String, dynamic> j) => Scan(
@@ -86,6 +92,10 @@ class Scan {
         localScore: j['localScore'] ?? 0,
         localFlags: List<String>.from(j['localFlags'] ?? []),
         reported: j['reported'] ?? false,
+        previousClassification: j['previousClassification'],
+        reclassifiedAt: j['reclassifiedAt'] == null
+            ? null
+            : DateTime.parse(j['reclassifiedAt']),
       );
 
   Map<String, dynamic> toJson() => {
@@ -99,5 +109,7 @@ class Scan {
         'localScore': localScore,
         'localFlags': localFlags,
         'reported': reported,
+        'previousClassification': previousClassification,
+        'reclassifiedAt': reclassifiedAt?.toIso8601String(),
       };
 }

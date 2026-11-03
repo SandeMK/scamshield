@@ -182,7 +182,8 @@ class _ScanCard extends StatelessWidget {
             '${classificationLabel(label)} · ${scan.sender}'
             '${scan.offline ? ' · cloud offline' : ''}'
             '${scan.source == 'simulated' ? ' · simulated' : ''}'
-            '${scan.source == 'shared' ? ' · shared' : ''}'),
+            '${scan.source == 'shared' ? ' · shared' : ''}'
+            '${scan.previousClassification != null ? ' · re-classified' : ''}'),
         onTap: () => showScanDetail(context, scan),
       ),
     );
@@ -201,6 +202,10 @@ Future<void> showScanDetail(BuildContext context, Scan scan) {
 }
 
 // ── Scan detail sheet ────────────────────────────────────────────────────────
+
+const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+String _shortDate(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
 class _ScanDetail extends StatelessWidget {
   final Scan scan;
@@ -236,6 +241,23 @@ class _ScanDetail extends StatelessWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
+          if (scan.previousClassification != null &&
+              scan.reclassifiedAt != null) ...[
+            const SizedBox(height: 12),
+            Card(
+              color: color.withValues(alpha: 0.12),
+              elevation: 0,
+              child: ListTile(
+                leading: Icon(Icons.update, color: color),
+                title: Text(
+                    'Re-classified ${_shortDate(scan.reclassifiedAt!)} — was '
+                    '${classificationLabel(scan.previousClassification!)}'),
+                subtitle: const Text(
+                    'Its link was found in the threat database after you '
+                    'received this message.'),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           Text(scan.text),
           const Divider(height: 32),
