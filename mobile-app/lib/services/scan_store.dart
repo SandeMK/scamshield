@@ -285,19 +285,16 @@ class ScanStore extends ChangeNotifier {
     } catch (_) {} // never let a channel/permission failure break scoring
   }
 
-  Future<bool> report(Scan scan, String reportType) async {
-    try {
-      final deviceId = await DeviceId.get();
-      await api.report(
-          text: scan.text, reportType: reportType, deviceId: deviceId);
-      scan.reported = true;
-      reportsSent += 1;
-      notifyListeners();
-      await _persist();
-      return true;
-    } catch (_) {
-      return false;
-    }
+  /// Throws on failure (see friendlyError) so the caller can say why; the
+  /// scan stays unreported and can be retried.
+  Future<void> report(Scan scan, String reportType) async {
+    final deviceId = await DeviceId.get();
+    await api.report(
+        text: scan.text, reportType: reportType, deviceId: deviceId);
+    scan.reported = true;
+    reportsSent += 1;
+    notifyListeners();
+    await _persist();
   }
 
   // ----- Dashboard aggregates (FR-08) -----

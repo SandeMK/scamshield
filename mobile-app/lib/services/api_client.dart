@@ -1,7 +1,9 @@
 /// REST client for the ScamShield Cloud Scoring API (/api/v1, X-API-Key).
 library;
 
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +11,50 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models.dart';
+
+/// A non-2xx API response. [message] is safe to show to the user: the
+/// server's own `detail` string when it sent one (the API's HTTPException
+/// details are already written for people), otherwise a generic line by
+/// status class. The raw body never reaches the UI.
+class ApiException implements Exception {
+  final int statusCode;
+  final String message;
+  const ApiException(this.statusCode, this.message);
+
+  factory ApiException.fromResponse(http.Response resp) {
+    String? detail;
+    try {
+      final body = jsonDecode(resp.body);
+      // FastAPI: HTTPException -> {"detail": "..."}; 422 validation ->
+      // {"detail": [...]}, which is not user-facing, so it falls through.
+      if (body is Map && body['detail'] is String) detail = body['detail'];
+    } catch (_) {} // HTML error page from the host, empty body, etc.
+    return ApiException(resp.statusCode, detail ?? _fallback(resp.statusCode));
+  }
+
+  static String _fallback(int status) {
+    if (status == 401 || status == 403) {
+      return 'This app is not authorised to use the ScamShield service';
+    }
+    if (status == 404) return 'Not found';
+    if (status == 422) return 'Some details look invalid — check and try again';
+    if (status >= 500) return 'ScamShield is temporarily unavailable';
+    return 'Request failed ($status)';
+  }
+
+  @override
+  String toString() => message;
+}
+
+/// User-facing text for anything an [ApiClient] call can throw.
+String friendlyError(Object e) {
+  if (e is ApiException) return e.message;
+  if (e is TimeoutException) return 'The server took too long to respond';
+  if (e is SocketException || e is http.ClientException) {
+    return "Can't reach ScamShield — check your internet connection";
+  }
+  return 'Something went wrong';
+}
 
 class ApiClient {
   static const defaultBaseUrl = 'https://scamshield-api-4ywt.onrender.com';
@@ -33,7 +79,7 @@ class ApiClient {
             body: jsonEncode({'text': text, 'sender': sender}))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
     return ScoreResult.fromJson(jsonDecode(resp.body));
   }
@@ -55,7 +101,7 @@ class ApiClient {
             }))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
   }
 
@@ -89,7 +135,7 @@ class ApiClient {
             }))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
     return jsonDecode(resp.body);
   }
@@ -102,7 +148,7 @@ class ApiClient {
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode == 404) return null;
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
     return jsonDecode(resp.body);
   }
@@ -123,7 +169,7 @@ class ApiClient {
             }))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
     return jsonDecode(resp.body);
   }
@@ -136,7 +182,7 @@ class ApiClient {
             body: jsonEncode({'email': email}))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
   }
 
@@ -153,7 +199,7 @@ class ApiClient {
                 {'email': email, 'code': code, 'device_id': deviceId}))
         .timeout(const Duration(seconds: 6));
     if (resp.statusCode != 200) {
-      throw Exception('API ${resp.statusCode}: ${resp.body}');
+      throw ApiException.fromResponse(resp);
     }
     return jsonDecode(resp.body);
   }

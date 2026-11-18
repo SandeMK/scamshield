@@ -11,6 +11,7 @@
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
 ///    report button disabled state, failed report (API 503)
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -23,6 +24,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:scamshield_app/models.dart';
 import 'package:scamshield_app/screens/home_screen.dart';
 import 'package:scamshield_app/screens/permission_screen.dart';
+import 'package:scamshield_app/services/api_client.dart';
 import 'package:scamshield_app/services/device_id.dart';
 import 'package:scamshield_app/services/local_rules.dart';
 import 'package:scamshield_app/services/scan_store.dart';
@@ -90,6 +92,34 @@ void main() {
   });
 
   // ── classificationColor ─────────────────────────────────────────────────────
+
+  group('ApiException / friendlyError', () {
+    test('uses the server detail string', () {
+      final e = ApiException.fromResponse(
+          http.Response('{"detail":"No profile for this device"}', 404));
+      expect(e.statusCode, 404);
+      expect(friendlyError(e), 'No profile for this device');
+    });
+
+    test('falls back by status when the body is not a detail string', () {
+      expect(
+          friendlyError(ApiException.fromResponse(
+              http.Response('<html>Bad Gateway</html>', 502))),
+          'ScamShield is temporarily unavailable');
+      expect(
+          friendlyError(ApiException.fromResponse(http.Response(
+              '{"detail":[{"loc":["body","email"],"msg":"bad"}]}', 422))),
+          'Some details look invalid — check and try again');
+    });
+
+    test('maps network failures', () {
+      expect(friendlyError(TimeoutException('x')),
+          'The server took too long to respond');
+      expect(friendlyError(http.ClientException('Failed host lookup')),
+          "Can't reach ScamShield — check your internet connection");
+      expect(friendlyError(StateError('x')), 'Something went wrong');
+    });
+  });
 
   group('classificationColor', () {
     test('CRITICAL returns dark red', () {
@@ -705,7 +735,7 @@ void main() {
       expect(reportBtns.any((b) => b.onPressed != null), isTrue);
     });
 
-    testWidgets('API 503 on report shows "not saved" and leaves scan unreported',
+    testWidgets('API 503 on report shows the reason inline, sheet stays open',
         (tester) async {
       final scan = _fakeScan('HIGH_RISK', score: 80);
       _seedStore([scan]);
@@ -727,9 +757,64 @@ void main() {
           }));
 
       expect(calls, ['/api/v1/report']);
-      expect(find.text('Report not saved — try again'), findsOneWidget);
+      // Server detail, not the raw "Exception: API 503: {...}" body.
+      expect(find.text('Report not saved. Try again.'), findsOneWidget);
+      expect(find.textContaining('Exception'), findsNothing);
+      expect(find.textContaining('{'), findsNothing);
+      // Sheet still open with the buttons re-enabled for a retry.
+      final scamBtn = tester.widget<ButtonStyleButton>(find.ancestor(
+          of: find.text('Report scam'),
+          matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+      expect(scamBtn.onPressed, isNotNull);
       expect(scan.reported, isFalse);
       expect(ScanStore.instance.reportsSent, 0);
+    });
+
+    testWidgets('report shows spinner and disables both buttons while sending',
+        (tester) async {
+      final scan = _fakeScan('HIGH_RISK', score: 80);
+      _seedStore([scan]);
+      final calls = <String>[];
+      final gate = Completer<void>();
+      await http.runWithClient(() async {
+        await tester.pumpWidget(_wrap(const HomeScreen()));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byType(ListTile).first);
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(ListView).last, const Offset(0, -300));
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.text('Report scam'));
+        await tester.pump();
+
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        final scamBtn = tester.widget<ButtonStyleButton>(find.ancestor(
+            of: find.text('Report scam'),
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+        final fpBtn = tester.widget<ButtonStyleButton>(find.ancestor(
+            of: find.text('False positive'),
+            matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+        expect(scamBtn.onPressed, isNull);
+        expect(fpBtn.onPressed, isNull);
+
+        // A second tap while in flight must not send a duplicate report.
+        await tester.tap(find.text('False positive'), warnIfMissed: false);
+        await tester.pump();
+
+        gate.complete();
+        await tester.pumpAndSettle();
+      }, () => MockClient((req) async {
+            calls.add(req.url.path);
+            await gate.future;
+            return http.Response('{"status":"ok"}', 200);
+          }));
+
+      expect(calls, ['/api/v1/report']);
+      expect(find.text('Report submitted to the shared threat network'),
+          findsOneWidget);
+      expect(scan.reported, isTrue);
+      expect(ScanStore.instance.reportsSent, 1);
     });
   });
 }
