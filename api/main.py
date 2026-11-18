@@ -206,6 +206,11 @@ class SupabaseThreatIntelClient(ThreatIntelClient):
 # SupabaseThreatIntelClient stub-vs-live split above.
 # ---------------------------------------------------------------------------
 
+class ProfileConflict(Exception):
+    """The email already belongs to another device's profile
+    (user_profiles.email is UNIQUE). Surfaced as 409, not 503."""
+
+
 class ProfileStore:
     """Fallback stub used when Supabase env vars are absent (offline dev)."""
 
@@ -216,6 +221,10 @@ class ProfileStore:
     def upsert(self, device_id: str, display_name: Optional[str] = None,
                email: Optional[str] = None, total_scans: Optional[int] = None,
                total_reports: Optional[int] = None) -> dict:
+        # Mirror the live table's UNIQUE(email) constraint.
+        if email is not None and any(p.get("email") == email and d != device_id
+                                     for d, p in self._by_device.items()):
+            raise ProfileConflict(email)
         profile = self._by_device.get(device_id)
         if profile is None:
             profile = {
@@ -303,9 +312,16 @@ class SupabaseProfileStore(ProfileStore):
                 headers={"Prefer": "resolution=merge-duplicates,return=representation"},
                 json=body,
             )
+            # PostgREST maps unique_violation (23505) to 409. device_id
+            # conflicts are merged by on_conflict, so a 409 naming email is
+            # another device's profile already holding that address.
+            if r.status_code == 409 and "email" in r.text:
+                raise ProfileConflict(email)
             r.raise_for_status()
             rows = r.json()
             return rows[0] if rows else None
+        except ProfileConflict:
+            raise
         except Exception as exc:
             log.warning("profile upsert failed: %s", exc)
             return None
@@ -605,13 +621,20 @@ def analytics_summary():
 
 @app.post("/api/v1/profile", dependencies=[Depends(require_api_key)])
 def create_or_update_profile(req: ProfileRequest):
-    profile = profiles.upsert(
-        device_id=req.device_id,
-        display_name=req.display_name,
-        email=req.email,
-        total_scans=req.total_scans,
-        total_reports=req.total_reports,
-    )
+    try:
+        profile = profiles.upsert(
+            device_id=req.device_id,
+            display_name=req.display_name,
+            email=req.email,
+            total_scans=req.total_scans,
+            total_reports=req.total_reports,
+        )
+    except ProfileConflict:
+        # No trailing period: the app appends its own punctuation.
+        raise HTTPException(
+            status_code=409,
+            detail="This email is already linked to another profile — use a "
+                   "different email, or recover that profile instead")
     if profile is None:
         raise HTTPException(status_code=503, detail="Profile service unavailable")
     return profile
