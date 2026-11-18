@@ -108,6 +108,24 @@ def test_profile_inherits_totals_on_creation():
     assert body["total_reports"] == 3
 
 
+def test_profile_email_taken_by_another_device_is_409():
+    r = client.post("/api/v1/profile",
+                    json={"device_id": "dev-email-a", "email": "taken@example.com"},
+                    headers=KEY)
+    assert r.status_code == 200
+    # Same device re-saving its own email is fine.
+    r = client.post("/api/v1/profile",
+                    json={"device_id": "dev-email-a", "email": "taken@example.com"},
+                    headers=KEY)
+    assert r.status_code == 200
+    r = client.post("/api/v1/profile",
+                    json={"device_id": "dev-email-b", "email": "taken@example.com"},
+                    headers=KEY)
+    assert r.status_code == 409
+    assert "already linked" in r.json()["detail"]
+    assert client.get("/api/v1/profile/dev-email-b", headers=KEY).status_code == 404
+
+
 def test_report_increments_profile_total_reports():
     client.post("/api/v1/profile", json={"device_id": "dev-3"}, headers=KEY)
     client.post("/api/v1/report",
