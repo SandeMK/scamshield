@@ -4,11 +4,13 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/api_client.dart';
 import '../services/device_id.dart';
 import '../services/guardian_channel.dart';
+import '../services/sa_phone.dart';
 import '../services/scan_store.dart';
 import '../util.dart';
 import '../widgets/inline_status.dart';
@@ -26,6 +28,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _status = 'Checking...';
   bool? _connected; // null while checking
   String _guardianStatus = '';
+  String? _guardianError; // shown under the field, cleared on edit
   bool _guardianPermissionGranted = false;
 
   // UC-13 Manage Profile & Notifications (FR-14/15/16)
@@ -53,7 +56,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _url.text = prefs.getString('baseUrl') ?? ApiClient.defaultBaseUrl;
         _key.text = prefs.getString('apiKey') ?? ApiClient.defaultApiKey;
-        _guardianContact.text = prefs.getString('guardianContact') ?? '';
+        _guardianContact.text =
+            formatSaMobile(prefs.getString('guardianContact') ?? '');
       });
     });
     _checkStatus();
@@ -251,9 +255,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (number.isEmpty) {
       await prefs.remove('guardianContact');
-      setState(() => _guardianStatus = 'Guardian Alert disabled.');
+      setState(() {
+        _guardianError = null;
+        _guardianStatus = 'Guardian Alert disabled.';
+      });
       return;
     }
+
+    // Validate before the SMS permission prompt: no point asking for
+    // SEND_SMS to text a number that can't receive one.
+    final e164 = normalizeSaMobile(number);
+    if (e164 == null) {
+      setState(() {
+        _guardianError = 'Enter a South African mobile number, e.g. 082 123 4567';
+        _guardianStatus = '';
+      });
+      return;
+    }
+    final display = formatSaMobile(e164);
+    setState(() {
+      _guardianError = null;
+      _guardianContact.text = display;
+    });
 
     if (!_guardianPermissionGranted) {
       final proceed = await _showGuardianExplainer();
@@ -268,9 +291,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
 
-    await prefs.setString('guardianContact', number);
+    // Stored as E.164 (+27...) so it still works while roaming.
+    await prefs.setString('guardianContact', e164);
     setState(() => _guardianStatus =
-        'Saved. $number will be texted automatically if a message scores CRITICAL.');
+        'Saved. $display will be texted automatically if a message scores CRITICAL.');
   }
 
   Future<bool?> _showGuardianExplainer() {
@@ -357,10 +381,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
         TextField(
           controller: _guardianContact,
           keyboardType: TextInputType.phone,
-          decoration: const InputDecoration(
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp(r'[0-9+\s\-()]')),
+          ],
+          onChanged: (_) {
+            if (_guardianError != null) setState(() => _guardianError = null);
+          },
+          decoration: InputDecoration(
               labelText: 'Trusted contact number',
-              hintText: 'e.g. 0821234567',
-              border: OutlineInputBorder()),
+              hintText: 'e.g. 082 123 4567',
+              helperText: 'South African mobile number',
+              errorText: _guardianError,
+              border: const OutlineInputBorder()),
         ),
         const SizedBox(height: 12),
         FilledButton(

@@ -3,6 +3,7 @@
 /// Coverage:
 ///  - util.dart: classificationColor, classificationLabel, shortModelVersion
 ///  - services/local_rules.dart: runLocalRules
+///  - services/sa_phone.dart: Guardian trusted-contact validation (FR-09)
 ///  - services/scan_store.dart: guardianAlertMessage (FR-09),
 ///    meetsAlertThreshold (FR-15)
 ///  - services/device_id.dart: stable Android-derived id, fallbacks
@@ -29,6 +30,7 @@ import 'package:scamshield_app/screens/permission_screen.dart';
 import 'package:scamshield_app/services/api_client.dart';
 import 'package:scamshield_app/services/device_id.dart';
 import 'package:scamshield_app/services/local_rules.dart';
+import 'package:scamshield_app/services/sa_phone.dart';
 import 'package:scamshield_app/services/scan_store.dart';
 import 'package:scamshield_app/util.dart';
 
@@ -283,6 +285,65 @@ void main() {
   });
 
   // ── guardianAlertMessage (FR-09) ────────────────────────────────────────────
+
+  group('normalizeSaMobile', () {
+    test('accepts common ways of writing an SA mobile number', () {
+      for (final input in [
+        '0821234567',
+        '082 123 4567',
+        '082-123-4567',
+        '(082) 123 4567',
+        '+27821234567',
+        '+27 82 123 4567',
+        '27821234567',
+        '0027821234567',
+      ]) {
+        expect(normalizeSaMobile(input), '+27821234567', reason: input);
+      }
+    });
+
+    test('accepts 06x and 07x mobile ranges', () {
+      expect(normalizeSaMobile('0612345678'), '+27612345678');
+      expect(normalizeSaMobile('0731234567'), '+27731234567');
+    });
+
+    test('rejects landlines and non-mobile 08x ranges', () {
+      for (final input in [
+        '0115551234', // Johannesburg landline
+        '0215551234', // Cape Town landline
+        '0800123456', // toll-free
+        '0861234567', // sharecall
+        '0871234567', // VoIP
+      ]) {
+        expect(normalizeSaMobile(input), isNull, reason: input);
+      }
+    });
+
+    test('rejects wrong length, foreign and junk input', () {
+      for (final input in [
+        '082123456', // 9 digits
+        '08212345678', // 11 digits
+        '+447911123456', // UK
+        '+1 415 555 0100', // US
+        'abc',
+        '',
+      ]) {
+        expect(normalizeSaMobile(input), isNull, reason: input);
+      }
+    });
+  });
+
+  group('formatSaMobile', () {
+    test('formats any accepted input as 082 123 4567', () {
+      expect(formatSaMobile('+27821234567'), '082 123 4567');
+      expect(formatSaMobile('0821234567'), '082 123 4567');
+    });
+
+    test('leaves anything else unchanged', () {
+      expect(formatSaMobile('12345'), '12345');
+      expect(formatSaMobile(''), '');
+    });
+  });
 
   group('guardianAlertMessage', () {
     const longScam = 'SARS eFiling: You have a pending refund of R3,450. '
