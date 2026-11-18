@@ -8,6 +8,7 @@
 ///  - services/device_id.dart: stable Android-derived id, fallbacks
 ///  - services/scan_store.dart: retroactive re-check (FR-15)
 ///  - screens/permission_screen.dart: render + button callback
+///  - screens/check_screen.dart: Check tab, collapsed FR-12 samples
 ///  - screens/home_screen.dart: empty state, cards, filter chips, detail sheet,
 ///    report button disabled state, failed report (API 503)
 
@@ -22,6 +23,7 @@ import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:scamshield_app/models.dart';
+import 'package:scamshield_app/screens/check_screen.dart';
 import 'package:scamshield_app/screens/home_screen.dart';
 import 'package:scamshield_app/screens/permission_screen.dart';
 import 'package:scamshield_app/services/api_client.dart';
@@ -45,13 +47,14 @@ Scan _fakeScan(
   int score = 75,
   bool reported = false,
   String text = 'SARS: Your refund is ready. Claim at sars-refund.xyz now.',
+  String source = 'simulated',
 }) =>
     Scan(
       id: UniqueKey().toString(),
       text: text,
       sender: '+27821234567',
       timestamp: DateTime.now(),
-      source: 'simulated',
+      source: source,
       reported: reported,
       result: ScoreResult(
         riskScore: score,
@@ -815,6 +818,52 @@ void main() {
           findsOneWidget);
       expect(scan.reported, isTrue);
       expect(ScanStore.instance.reportsSent, 1);
+    });
+  });
+
+  // ── CheckScreen (Check tab) ──────────────────────────────────────────────────
+
+  group('CheckScreen', () {
+    testWidgets('shows the paste box and Check message button', (tester) async {
+      await tester.pumpWidget(_wrap(const CheckScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Check a message'), findsOneWidget);
+      expect(find.byType(TextField), findsOneWidget);
+      expect(find.text('Check message'), findsOneWidget);
+    });
+
+    testWidgets('FR-12 samples are collapsed until expanded', (tester) async {
+      await tester.pumpWidget(_wrap(const CheckScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Try a sample message'), findsOneWidget);
+      expect(find.text('SARS impersonation'), findsNothing);
+
+      await tester.tap(find.text('Try a sample message'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('SARS impersonation'), findsOneWidget);
+      expect(find.byIcon(Icons.play_arrow), findsWidgets);
+    });
+  });
+
+  group('Scan card source tag', () {
+    testWidgets('pasted scan is tagged pasted, not simulated', (tester) async {
+      _seedStore([_fakeScan('HIGH_RISK', score: 80, source: 'pasted')]);
+      await tester.pumpWidget(_wrap(const HomeScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining(' · pasted'), findsOneWidget);
+      expect(find.textContaining(' · simulated'), findsNothing);
+    });
+
+    testWidgets('sample scan keeps the simulated tag', (tester) async {
+      _seedStore([_fakeScan('HIGH_RISK', score: 80)]);
+      await tester.pumpWidget(_wrap(const HomeScreen()));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining(' · simulated'), findsOneWidget);
     });
   });
 }

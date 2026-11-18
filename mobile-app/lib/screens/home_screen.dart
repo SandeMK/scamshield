@@ -129,8 +129,8 @@ class _EmptyState extends StatelessWidget {
       _Filter.all => (
           Icons.shield_outlined,
           'No messages scanned yet',
-          'Incoming SMS will appear here automatically, or use the Simulate tab '
-              'to inject a test message.',
+          'Incoming SMS will appear here automatically, or use the Check tab '
+              'to check a message yourself.',
         ),
     };
     return Center(
@@ -187,6 +187,7 @@ class _ScanCard extends StatelessWidget {
             '${scan.offline ? ' · cloud offline' : ''}'
             '${scan.source == 'simulated' ? ' · simulated' : ''}'
             '${scan.source == 'shared' ? ' · shared' : ''}'
+            '${scan.source == 'pasted' ? ' · pasted' : ''}'
             '${scan.previousClassification != null ? ' · re-classified' : ''}'),
         onTap: () => showScanDetail(context, scan),
       ),
@@ -378,7 +379,7 @@ class _ScanDetailState extends State<_ScanDetail> {
   }
 }
 
-/// Message body; long-press copies it (e.g. to paste into the Simulator or
+/// Message body; long-press copies it (e.g. to paste into the Check tab or
 /// grab its link when demonstrating the threat re-check). The sheet sits above
 /// the root Scaffold, so confirmation is shown inline instead of a SnackBar.
 class _CopyableMessage extends StatefulWidget {

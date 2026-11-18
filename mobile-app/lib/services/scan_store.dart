@@ -1,6 +1,7 @@
 /// Central scan pipeline + persistent store.
 ///
-/// Every message (real SMS or simulated) flows through [process]:
+/// Every message (real SMS, shared, pasted or simulated) flows through
+/// [process]:
 ///   1. FR-10 local heuristics -> instant provisional result
 ///   2. Cloud hybrid scoring -> final result
 ///   3. NFR-08 offline fallback: keep local result, mark cloud offline
