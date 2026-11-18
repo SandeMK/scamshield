@@ -1,7 +1,7 @@
 /// ScamShield integration test (Assignment 2 §14.3).
 ///
 /// Tests the full end-to-end flow:
-///   Simulator tab → type message → Analyze → result appears on Scans tab.
+///   Check tab → paste message → Check message → result appears on Scans tab.
 ///
 /// Run on device: flutter test integration_test/app_test.dart -d <device-id>
 
@@ -25,16 +25,16 @@ void main() {
   });
 
   testWidgets(
-    'Simulate tab: typing and analyzing a message shows a scan card on the Scans tab',
+    'Check tab: pasting and checking a message shows a pasted scan card on the Scans tab',
     (tester) async {
       await tester.pumpWidget(const ScamShieldApp(firstLaunch: false));
       await tester.pumpAndSettle();
 
-      // ── Navigate to Simulate tab ─────────────────────────────────────────────
-      await tester.tap(find.byIcon(Icons.science_outlined));
+      // ── Navigate to Check tab ────────────────────────────────────────────────
+      await tester.tap(find.byIcon(Icons.fact_check_outlined));
       await tester.pumpAndSettle();
 
-      expect(find.text('Simulate an incoming SMS'), findsOneWidget);
+      expect(find.text('Check a message'), findsOneWidget);
 
       // ── Type a scam message ──────────────────────────────────────────────────
       const message =
@@ -44,8 +44,8 @@ void main() {
       await tester.enterText(find.byType(TextField).first, message);
       await tester.pumpAndSettle();
 
-      // ── Tap Analyze ──────────────────────────────────────────────────────────
-      await tester.tap(find.text('Analyze'));
+      // ── Tap Check message ────────────────────────────────────────────────────
+      await tester.tap(find.text('Check message'));
 
       // Pump one frame to allow ScanStore.process() to insert the provisional
       // scan (local heuristics fire synchronously before the async API call).
@@ -62,18 +62,26 @@ void main() {
         reason: 'Scan card should appear immediately after local heuristics run',
       );
 
+      // Pasted text is tagged 'pasted', never 'simulated'.
+      expect(find.textContaining(' · pasted'), findsOneWidget);
+
       // Scans tab should no longer show the empty state.
       expect(find.text('No messages scanned yet'), findsNothing);
     },
   );
 
   testWidgets(
-    'Simulate tab: sample message tap runs through pipeline',
+    'Check tab: samples are collapsed; a sample tap runs through pipeline as simulated',
     (tester) async {
       await tester.pumpWidget(const ScamShieldApp(firstLaunch: false));
       await tester.pumpAndSettle();
 
-      await tester.tap(find.byIcon(Icons.science_outlined));
+      await tester.tap(find.byIcon(Icons.fact_check_outlined));
+      await tester.pumpAndSettle();
+
+      // FR-12 samples sit in a collapsed section.
+      expect(find.byIcon(Icons.play_arrow), findsNothing);
+      await tester.tap(find.text('Try a sample message'));
       await tester.pumpAndSettle();
 
       // Tap the first sample (SARS impersonation)
@@ -85,6 +93,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(Card), findsAtLeastNWidgets(1));
+      expect(find.textContaining(' · simulated'), findsOneWidget);
       expect(find.text('No messages scanned yet'), findsNothing);
     },
   );

@@ -19,7 +19,7 @@ dashboard. Android-only scope (NFR-06), sideloaded for the pilot demo.
 | FR-09 Guardian Alert | `lib/services/guardian_channel.dart`, `lib/screens/settings_screen.dart`, `android/.../MainActivity.kt` (permission), `android/.../SmsProtectionService.kt` (send) |
 | FR-10 Share-to-ScamShield | `lib/services/share_channel.dart`, `android/.../MainActivity.kt` |
 | FR-11 Configurable base URL / API key | `lib/screens/settings_screen.dart` |
-| FR-12 Message simulation | `lib/screens/simulator_screen.dart` |
+| FR-12 Message simulation | `lib/screens/check_screen.dart` ("Try a sample message") |
 | FR-13 Analytics dashboard | `lib/screens/dashboard_screen.dart` |
 | FR-14 Profile creation | `lib/screens/settings_screen.dart`, `lib/services/device_id.dart` |
 | FR-15 Notification preferences | `lib/screens/settings_screen.dart` |
@@ -36,8 +36,10 @@ flutter run -d <device-id>   # flutter devices to list
 Android scaffolding is fully committed. No `setup.sh` step required.
 
 ## Demo tips
-- **Simulate tab**: injects realistic SA smishing samples through the exact
-  same pipeline as real SMS — demo-safe, no network SMS dependency.
+- **Check tab**: paste any message to check it (tagged `pasted`), or open
+  "Try a sample message" to run realistic SA smishing samples through the
+  exact same pipeline as real SMS (tagged `simulated`) — demo-safe, no
+  network SMS dependency.
 - **Real SMS**: text the device from another number; it will appear in the
   Scans tab automatically (foreground service keeps the channel alive even
   when the app is swiped away).

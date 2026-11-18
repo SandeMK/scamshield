@@ -10,7 +10,7 @@ import 'screens/dashboard_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/permission_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/simulator_screen.dart';
+import 'screens/check_screen.dart';
 import 'services/alert_tap_channel.dart';
 import 'services/scan_store.dart';
 import 'services/share_channel.dart';
@@ -135,7 +135,7 @@ class _RootScaffoldState extends State<RootScaffold>
 
   static const _screens = [
     HomeScreen(),
-    SimulatorScreen(),
+    CheckScreen(),
     DashboardScreen(),
     SettingsScreen(),
   ];
@@ -152,7 +152,7 @@ class _RootScaffoldState extends State<RootScaffold>
           NavigationDestination(
               icon: Icon(Icons.shield_outlined), label: 'Scans'),
           NavigationDestination(
-              icon: Icon(Icons.science_outlined), label: 'Simulate'),
+              icon: Icon(Icons.fact_check_outlined), label: 'Check'),
           NavigationDestination(
               icon: Icon(Icons.insights_outlined), label: 'Dashboard'),
           NavigationDestination(
