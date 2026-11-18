@@ -14,3 +14,10 @@ Color classificationColor(String c) => switch (c) {
     };
 
 String classificationLabel(String c) => c.replaceAll('_', ' ');
+
+/// Model version without the algorithm suffix, for the Settings service
+/// status: the API's model_version (§12) is e.g. "v1.0.0 (RandomForest)",
+/// but users only need the version there. The scan detail sheet keeps the
+/// full string, next to the ML confidence it explains.
+String shortModelVersion(String v) =>
+    v.replaceFirst(RegExp(r'\s*\(.*\)\s*$'), '');

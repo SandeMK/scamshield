@@ -1,7 +1,7 @@
 /// ScamShield widget + unit tests (Assignment 2 §14.2).
 ///
 /// Coverage:
-///  - util.dart: classificationColor, classificationLabel
+///  - util.dart: classificationColor, classificationLabel, shortModelVersion
 ///  - services/local_rules.dart: runLocalRules
 ///  - services/scan_store.dart: guardianAlertMessage (FR-09),
 ///    meetsAlertThreshold (FR-15)
@@ -146,6 +146,16 @@ void main() {
   });
 
   // ── classificationLabel ─────────────────────────────────────────────────────
+
+  group('shortModelVersion', () {
+    test('drops the algorithm suffix', () {
+      expect(shortModelVersion('v1.0.0 (RandomForest)'), 'v1.0.0');
+    });
+
+    test('leaves a plain version unchanged', () {
+      expect(shortModelVersion('v1.0.0'), 'v1.0.0');
+    });
+  });
 
   group('classificationLabel', () {
     test('replaces underscores with spaces', () {

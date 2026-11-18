@@ -10,6 +10,7 @@ import '../services/api_client.dart';
 import '../services/device_id.dart';
 import '../services/guardian_channel.dart';
 import '../services/scan_store.dart';
+import '../util.dart';
 import '../widgets/inline_status.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -219,10 +220,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final h = await ApiClient().health();
       final db = h['db_connected'];
+      final model = h['model_version'] as String?;
       if (!mounted) return;
       setState(() {
         _connected = true;
-        _status = 'Connected - model ${h['model_version'] ?? '?'} · '
+        _status = 'Connected - model ${model == null ? '?' : shortModelVersion(model)} · '
             'threat database ${db == true ? 'online' : db == false ? 'offline' : 'n/a'}';
       });
     } catch (_) {
