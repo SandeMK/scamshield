@@ -274,8 +274,8 @@ class _ScanDetailState extends State<_ScanDetail> {
               child: ListTile(
                 leading: Icon(Icons.update, color: color),
                 title: Text(
-                    'Re-classified ${_shortDate(scan.reclassifiedAt!)} — was '
-                    '${classificationLabel(scan.previousClassification!)}'),
+                    'Re-classified ${_shortDate(scan.reclassifiedAt!)} (was '
+                    '${classificationLabel(scan.previousClassification!)})'),
                 subtitle: const Text(
                     'Its link was found in the threat database after you '
                     'received this message.'),
@@ -302,7 +302,7 @@ class _ScanDetailState extends State<_ScanDetail> {
               const Padding(
                 padding: EdgeInsets.only(bottom: 8),
                 child: Text(
-                    'Cloud scoring is temporarily offline — showing local '
+                    'Cloud scoring is temporarily offline. Showing local '
                     'heuristic checks only.',
                     style: TextStyle(fontStyle: FontStyle.italic)),
               ),
@@ -344,7 +344,7 @@ class _ScanDetailState extends State<_ScanDetail> {
           if (scan.reported)
             const Padding(
               padding: EdgeInsets.only(top: 8),
-              child: Text('Report submitted — thank you for contributing.',
+              child: Text('Report submitted. Thank you for contributing.',
                   textAlign: TextAlign.center),
             ),
         ],

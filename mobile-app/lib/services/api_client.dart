@@ -37,7 +37,7 @@ class ApiException implements Exception {
       return 'This app is not authorised to use the ScamShield service';
     }
     if (status == 404) return 'Not found';
-    if (status == 422) return 'Some details look invalid — check and try again';
+    if (status == 422) return 'Some details look invalid. Check and try again';
     if (status >= 500) return 'ScamShield is temporarily unavailable';
     return 'Request failed ($status)';
   }
@@ -51,7 +51,7 @@ String friendlyError(Object e) {
   if (e is ApiException) return e.message;
   if (e is TimeoutException) return 'The server took too long to respond';
   if (e is SocketException || e is http.ClientException) {
-    return "Can't reach ScamShield — check your internet connection";
+    return "Can't reach ScamShield. Check your internet connection";
   }
   return 'Something went wrong';
 }
