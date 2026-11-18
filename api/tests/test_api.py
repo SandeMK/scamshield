@@ -185,3 +185,82 @@ def test_recovery_verify_rejects_wrong_code():
         "email": "thabo@example.com", "code": "000000", "device_id": "dev-5-new",
     }, headers=KEY)
     assert r.status_code == 400
+
+
+# --- FR-16 recovery: a valid code must never be reported as "invalid" ------
+
+import httpx  # noqa: E402
+import pytest  # noqa: E402
+
+import main  # noqa: E402
+
+
+def _recover(monkeypatch, email, device_id, code="123456"):
+    """Request a recovery code (pinned via randbelow), then verify it."""
+    monkeypatch.setattr(main.secrets, "randbelow", lambda _n: int(code))
+    client.post("/api/v1/profile/recovery/request", json={"email": email}, headers=KEY)
+    return client.post("/api/v1/profile/recovery/verify", json={
+        "email": email, "code": code, "device_id": device_id,
+    }, headers=KEY)
+
+
+def test_recovery_verify_moves_profile_to_new_device(monkeypatch):
+    client.post("/api/v1/profile", json={"device_id": "dev-7", "email": "zanele@example.com"},
+                headers=KEY)
+    r = _recover(monkeypatch, "zanele@example.com", "dev-7-new")
+    assert r.status_code == 200
+    assert r.json()["device_id"] == "dev-7-new"
+    assert client.get("/api/v1/profile/dev-7", headers=KEY).status_code == 404
+
+
+def test_recovery_verify_valid_code_but_no_profile_is_404(monkeypatch):
+    r = _recover(monkeypatch, "nobody@example.com", "dev-8")
+    assert r.status_code == 404
+    assert "Invalid" not in r.json()["detail"]
+
+
+def test_recovery_verify_onto_device_with_own_profile_is_409(monkeypatch):
+    client.post("/api/v1/profile", json={"device_id": "dev-9", "email": "sipho@example.com"},
+                headers=KEY)
+    client.post("/api/v1/profile", json={"device_id": "dev-10", "email": "lindi@example.com"},
+                headers=KEY)
+    r = _recover(monkeypatch, "sipho@example.com", "dev-10")
+    assert r.status_code == 409
+    assert "Invalid" not in r.json()["detail"]
+    # Neither profile moved.
+    assert client.get("/api/v1/profile/dev-9", headers=KEY).json()["email"] == "sipho@example.com"
+    assert client.get("/api/v1/profile/dev-10", headers=KEY).json()["email"] == "lindi@example.com"
+
+
+def _live_store(patch_response):
+    """SupabaseProfileStore whose Auth verify succeeds and whose
+    user_profiles PATCH returns patch_response."""
+    def fake(request):
+        if request.url.path.endswith("/auth/v1/verify"):
+            return httpx.Response(200, json={})
+        return patch_response
+    return main.SupabaseProfileStore("https://db.example", "k",
+                                     transport=httpx.MockTransport(fake))
+
+
+@pytest.mark.parametrize("response, status", [
+    (httpx.Response(409, json={
+        "code": "23505",
+        "details": "Key (device_id)=(dev-x) already exists.",
+        "message": "duplicate key value violates unique constraint "
+                   "\"user_profiles_device_id_key\""}), 409),
+    (httpx.Response(200, json=[]), 404),
+    (httpx.Response(500, json={"message": "boom"}), 503),
+])
+def test_live_relink_failures_map_to_their_own_status(response, status):
+    with pytest.raises(main.RecoveryRelinkError) as exc:
+        _live_store(response).verify_recovery("a@example.com", "123456", "dev-x")
+    assert exc.value.status_code == status
+
+
+def test_live_wrong_code_still_returns_none():
+    def fake(request):
+        return httpx.Response(403, json={"msg": "Token has expired or is invalid"})
+    store = main.SupabaseProfileStore("https://db.example", "k",
+                                      transport=httpx.MockTransport(fake))
+    assert store.verify_recovery("a@example.com", "000000", "dev-x") is None

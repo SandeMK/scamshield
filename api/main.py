@@ -211,6 +211,26 @@ class ProfileConflict(Exception):
     (user_profiles.email is UNIQUE). Surfaced as 409, not 503."""
 
 
+class RecoveryRelinkError(Exception):
+    """The recovery code was valid, but the profile could not be moved to
+    the new device. Carries its own HTTP status and user-facing detail so
+    the endpoint never reports it as "Invalid or expired code" — the code
+    has already been used up, and re-typing it would only fail again."""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(detail)
+        self.status_code = status_code
+        self.detail = detail
+
+
+# Shown verbatim in the app (no trailing period: the app adds one).
+RELINK_NO_PROFILE = (404, "Code accepted, but no profile uses that email")
+RELINK_DEVICE_TAKEN = (409, "This phone already has its own profile, so "
+                            "another one can't be restored onto it")
+RELINK_FAILED = (503, "Code accepted, but the profile couldn't be restored. "
+                      "Request a new code and try again")
+
+
 class ProfileStore:
     """Fallback stub used when Supabase env vars are absent (offline dev)."""
 
@@ -265,13 +285,19 @@ class ProfileStore:
                   email, code)
 
     def verify_recovery(self, email: str, code: str, new_device_id: str) -> Optional[dict]:
+        """None only for a wrong/expired code; relink failures raise
+        RecoveryRelinkError."""
         entry = self._otp.get(email)
         if not entry or time.time() > entry[1] or hash_indicator(code) != entry[0]:
             return None
         del self._otp[email]
         profile = next((p for p in self._by_device.values() if p.get("email") == email), None)
         if profile is None:
-            return None
+            raise RecoveryRelinkError(*RELINK_NO_PROFILE)
+        # Mirror the live table's UNIQUE(device_id) constraint.
+        other = self._by_device.get(new_device_id)
+        if other is not None and other is not profile:
+            raise RecoveryRelinkError(*RELINK_DEVICE_TAKEN)
         del self._by_device[profile["device_id"]]
         profile["device_id"] = new_device_id
         self._by_device[new_device_id] = profile
@@ -285,13 +311,14 @@ class SupabaseProfileStore(ProfileStore):
     needed — the project's existing Supabase instance already has one.
     """
 
-    def __init__(self, base_url: str, key: str):
+    def __init__(self, base_url: str, key: str, transport=None):
         import httpx
         self._rest = f"{base_url.rstrip('/')}/rest/v1"
         self._auth = f"{base_url.rstrip('/')}/auth/v1"
         self._client = httpx.Client(
             headers={"apikey": key, "Authorization": f"Bearer {key}"},
             timeout=3.0,
+            transport=transport,  # tests inject httpx.MockTransport
         )
 
     def upsert(self, device_id, display_name=None, email=None,
@@ -377,6 +404,8 @@ class SupabaseProfileStore(ProfileStore):
         except Exception as exc:
             log.warning("recovery OTP verify failed: %s", exc)
             return None
+        # The code is spent from here on: every failure below is a relink
+        # failure, never "invalid code".
         try:
             r = self._client.patch(
                 f"{self._rest}/user_profiles",
@@ -384,12 +413,20 @@ class SupabaseProfileStore(ProfileStore):
                 headers={"Prefer": "return=representation"},
                 json={"device_id": new_device_id, "last_active": _now_iso()},
             )
+            # PostgREST maps unique_violation (23505) to 409; only device_id
+            # changes here, so it is this phone's own profile in the way.
+            if r.status_code == 409 and "device_id" in r.text:
+                raise RecoveryRelinkError(*RELINK_DEVICE_TAKEN)
             r.raise_for_status()
             rows = r.json()
-            return rows[0] if rows else None
+        except RecoveryRelinkError:
+            raise
         except Exception as exc:
             log.warning("profile relink failed: %s", exc)
-            return None
+            raise RecoveryRelinkError(*RELINK_FAILED)
+        if not rows:
+            raise RecoveryRelinkError(*RELINK_NO_PROFILE)
+        return rows[0]
 
 
 # ---------------------------------------------------------------------------
@@ -670,7 +707,10 @@ def request_recovery(req: RecoveryRequest):
 
 @app.post("/api/v1/profile/recovery/verify", dependencies=[Depends(require_api_key)])
 def verify_recovery(req: RecoveryVerifyRequest):
-    profile = profiles.verify_recovery(req.email, req.code, req.device_id)
+    try:
+        profile = profiles.verify_recovery(req.email, req.code, req.device_id)
+    except RecoveryRelinkError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail)
     if profile is None:
         raise HTTPException(status_code=400, detail="Invalid or expired code")
     return profile
