@@ -14,7 +14,7 @@ at least three reason codes, and shares newly discovered scam indicators
 across all users through a cloud threat-intelligence network.
 
 ## Architecture
-
+a
 **Full visual documentation with diagrams: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**
 (system overview, scoring sequence, intelligence propagation, database ER
 diagram, and app structure — all rendered natively by GitHub.)

@@ -2,8 +2,10 @@
 /// explanation codes (US-02) and report actions (FR-05, US-03/04).
 library;
 
+import 'dart:async';
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../models.dart';
 import '../services/scan_store.dart';
 import '../util.dart';
@@ -259,7 +261,7 @@ class _ScanDetail extends StatelessWidget {
             ),
           ],
           const SizedBox(height: 16),
-          Text(scan.text),
+          _CopyableMessage(text: scan.text),
           const Divider(height: 32),
           Text('Why this was flagged',
               style: Theme.of(context).textTheme.titleMedium),
@@ -334,6 +336,63 @@ class _ScanDetail extends StatelessWidget {
               ? 'Report submitted to the shared threat network'
               : 'Report not saved — try again')));
     }
+  }
+}
+
+/// Message body; long-press copies it (e.g. to paste into the Simulator or
+/// grab its link when demonstrating the threat re-check). The sheet sits above
+/// the root Scaffold, so confirmation is shown inline instead of a SnackBar.
+class _CopyableMessage extends StatefulWidget {
+  final String text;
+  const _CopyableMessage({required this.text});
+  @override
+  State<_CopyableMessage> createState() => _CopyableMessageState();
+}
+
+class _CopyableMessageState extends State<_CopyableMessage> {
+  bool _copied = false;
+  Timer? _reset;
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: widget.text));
+    HapticFeedback.mediumImpact();
+    if (!mounted) return;
+    setState(() => _copied = true);
+    _reset?.cancel();
+    _reset = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _copied = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _reset?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onLongPress: _copy,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.text),
+          if (_copied)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Row(children: [
+                Icon(Icons.check,
+                    size: 16, color: Theme.of(context).colorScheme.primary),
+                const SizedBox(width: 4),
+                Text('Message copied',
+                    style: Theme.of(context).textTheme.bodySmall),
+              ]),
+            ),
+        ],
+      ),
+    );
   }
 }
 

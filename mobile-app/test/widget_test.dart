@@ -628,6 +628,37 @@ void main() {
       expect(find.text('IMP_001'), findsOneWidget);
     });
 
+    testWidgets('long-pressing the message copies it to the clipboard',
+        (tester) async {
+      String? copied;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform, (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String?;
+        }
+        return null;
+      });
+      addTearDown(() => tester.binding.defaultBinaryMessenger
+          .setMockMethodCallHandler(SystemChannels.platform, null));
+
+      final scan = _fakeScan('HIGH_RISK', score: 80);
+      _seedStore([scan]);
+      await tester.pumpWidget(_wrap(const HomeScreen()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(ListTile).first);
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text(scan.text).last);
+      await tester.pump();
+
+      expect(copied, scan.text);
+      expect(find.text('Message copied'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 3));
+      expect(find.text('Message copied'), findsNothing);
+    });
+
     testWidgets('detail sheet shows model version after scrolling', (tester) async {
       _seedStore([_fakeScan('CRITICAL', score: 95)]);
       await tester.pumpWidget(_wrap(const HomeScreen()));

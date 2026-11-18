@@ -71,7 +71,7 @@ const retroactiveUpdatesKey = 'retroactiveUpdates';
 const _lastRecheckKey = 'lastRecheckAt';
 const recheckWindow = Duration(days: 14);
 const recheckMaxPerRun = 25;
-const recheckMinInterval = Duration(hours: 1);
+const recheckMinInterval = Duration(minutes: 1);
 const recheckPeriod = Duration(hours: 6);
 
 bool _hasIntelMatch(ScoreResult? r) =>

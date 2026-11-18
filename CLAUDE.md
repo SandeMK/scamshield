@@ -134,7 +134,7 @@ predates the current spec's due date and was stale; corrected here).
   enforced client-side (ScanStore.recheckRecent): the server keeps no
   scans, so the phone re-scores recent (14 d, max 25) cloud-scored,
   link-bearing, non-CRITICAL, unreported scans via /score/sms on app
-  open/resume (throttled 1 h), every 6 h, and Settings → "Re-check now".
+  open/resume (throttled 1 min), every 6 h, and Settings → "Re-check now".
   A result is replaced only if it gains INTEL_MATCH and the level rises
   (never lowered; a model update alone never re-classifies). Alert follows
   the local 'retroactiveUpdates' copy (absent = on) + alert threshold; no
