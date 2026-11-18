@@ -109,14 +109,14 @@ void main() {
       expect(
           friendlyError(ApiException.fromResponse(http.Response(
               '{"detail":[{"loc":["body","email"],"msg":"bad"}]}', 422))),
-          'Some details look invalid — check and try again');
+          'Some details look invalid. Check and try again');
     });
 
     test('maps network failures', () {
       expect(friendlyError(TimeoutException('x')),
           'The server took too long to respond');
       expect(friendlyError(http.ClientException('Failed host lookup')),
-          "Can't reach ScamShield — check your internet connection");
+          "Can't reach ScamShield. Check your internet connection");
       expect(friendlyError(StateError('x')), 'Something went wrong');
     });
   });

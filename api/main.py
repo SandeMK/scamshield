@@ -261,7 +261,7 @@ class ProfileStore:
     def request_recovery(self, email: str) -> None:
         code = f"{secrets.randbelow(1_000_000):06d}"
         self._otp[email] = (hash_indicator(code), time.time() + RECOVERY_CODE_TTL_S)
-        log.info("DEV recovery code for %s: %s (stub only — never returned by the API)",
+        log.info("DEV recovery code for %s: %s (stub only, never returned by the API)",
                   email, code)
 
     def verify_recovery(self, email: str, code: str, new_device_id: str) -> Optional[dict]:
@@ -633,7 +633,7 @@ def create_or_update_profile(req: ProfileRequest):
         # No trailing period: the app appends its own punctuation.
         raise HTTPException(
             status_code=409,
-            detail="This email is already linked to another profile — use a "
+            detail="This email is already linked to another profile. Use a "
                    "different email, or recover that profile instead")
     if profile is None:
         raise HTTPException(status_code=503, detail="Profile service unavailable")

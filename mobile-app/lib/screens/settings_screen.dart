@@ -116,7 +116,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final n = await ScanStore.instance.recheckRecent();
     if (!mounted) return;
     setState(() => _recheckStatus = n == 0
-        ? 'No changes — no recent link has been newly flagged.'
+        ? 'No changes. No recent link has been newly flagged.'
         : '$n message${n == 1 ? '' : 's'} re-classified. See the Scans tab.');
   }
 
@@ -179,7 +179,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _recoveryCodeSent = true;
         _recoveryStatus = const InlineStatus.success(
-            'Code sent — check that inbox for a 6-digit code.');
+            'Code sent. Check that inbox for a 6-digit code.');
       });
     } catch (e) {
       if (!mounted) return;
@@ -229,7 +229,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() {
         _connected = false;
-        _status = 'Cloud unreachable — scans fall back to on-device checks.';
+        _status = 'Cloud unreachable. Scans fall back to on-device checks.';
       });
     }
   }
@@ -261,7 +261,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() => _guardianPermissionGranted = granted);
       if (!granted) {
         setState(() => _guardianStatus =
-            'SMS permission denied — Guardian Alert will not send until it is granted.');
+            'SMS permission denied. Guardian Alert will not send until it is granted.');
         return;
       }
     }
