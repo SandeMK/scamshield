@@ -7,8 +7,10 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models.dart';
+import '../services/api_client.dart';
 import '../services/scan_store.dart';
 import '../util.dart';
+import '../widgets/inline_status.dart';
 
 enum _Filter { all, suspicious, reported }
 
@@ -209,12 +211,31 @@ const _months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 String _shortDate(DateTime d) => '${d.day} ${_months[d.month - 1]}';
 
-class _ScanDetail extends StatelessWidget {
+class _ScanDetail extends StatefulWidget {
   final Scan scan;
   const _ScanDetail({required this.scan});
 
   @override
+  State<_ScanDetail> createState() => _ScanDetailState();
+}
+
+class _ScanDetailState extends State<_ScanDetail> {
+  /// Report type in flight ('scam' / 'false_positive'); null when idle.
+  /// Disables both buttons so a slow API can't be double-reported.
+  String? _sending;
+
+  /// Last failed report; shown under the buttons, sheet stays open to retry.
+  String? _error;
+
+  static const _spinner = SizedBox(
+      width: 16,
+      height: 16,
+      child: CircularProgressIndicator(strokeWidth: 2));
+
+  @override
   Widget build(BuildContext context) {
+    final scan = widget.scan;
+    final canReport = !scan.reported && _sending == null;
     final r = scan.result;
     final label = r?.classification ?? (scan.offline ? 'OFFLINE' : 'PENDING');
     final color = classificationColor(label);
@@ -300,22 +321,25 @@ class _ScanDetail extends StatelessWidget {
           Row(children: [
             Expanded(
               child: FilledButton.icon(
-                icon: const Icon(Icons.report),
+                icon: _sending == 'scam' ? _spinner : const Icon(Icons.report),
                 label: const Text('Report scam'),
                 style: FilledButton.styleFrom(backgroundColor: Colors.red[700]),
-                onPressed: scan.reported ? null : () => _report(context, 'scam'),
+                onPressed: canReport ? () => _report('scam') : null,
               ),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: OutlinedButton.icon(
-                icon: const Icon(Icons.thumb_down_alt_outlined),
+                icon: _sending == 'false_positive'
+                    ? _spinner
+                    : const Icon(Icons.thumb_down_alt_outlined),
                 label: const Text('False positive'),
-                onPressed:
-                    scan.reported ? null : () => _report(context, 'false_positive'),
+                onPressed: canReport ? () => _report('false_positive') : null,
               ),
             ),
           ]),
+          if (_error != null)
+            InlineStatusLine(InlineStatus.error(_error!)),
           if (scan.reported)
             const Padding(
               padding: EdgeInsets.only(top: 8),
@@ -327,15 +351,30 @@ class _ScanDetail extends StatelessWidget {
     );
   }
 
-  Future<void> _report(BuildContext context, String type) async {
-    final ok = await ScanStore.instance.report(scan, type);
-    if (context.mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(ok
-              ? 'Report submitted to the shared threat network'
-              : 'Report not saved — try again')));
+  /// Success closes the sheet and confirms with a SnackBar (the sheet is
+  /// gone, so there is nowhere inline to say it). Failure keeps the sheet
+  /// open with the reason under the buttons so the user can retry in place.
+  Future<void> _report(String type) async {
+    setState(() {
+      _sending = type;
+      _error = null;
+    });
+    try {
+      await ScanStore.instance.report(widget.scan, type);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _sending = null;
+          _error = '${friendlyError(e)}. Try again.';
+        });
+      }
+      return;
     }
+    if (!mounted) return;
+    // _sending stays set so the buttons don't re-enable mid exit-animation.
+    Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('Report submitted to the shared threat network')));
   }
 }
 

@@ -10,6 +10,7 @@ import '../services/api_client.dart';
 import '../services/device_id.dart';
 import '../services/guardian_channel.dart';
 import '../services/scan_store.dart';
+import '../widgets/inline_status.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -32,17 +33,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _hasProfile = false;
   final _displayName = TextEditingController();
   final _profileEmail = TextEditingController();
-  String _profileStatus = '';
+  InlineStatus? _profileStatus;
 
   String _alertThreshold = 'MEDIUM_RISK';
   bool _retroactiveUpdates = true;
-  String _notifStatus = '';
+  InlineStatus? _notifStatus;
   String _recheckStatus = '';
 
   final _recoveryEmail = TextEditingController();
   final _recoveryCode = TextEditingController();
   bool _recoveryCodeSent = false;
-  String _recoveryStatus = '';
+  InlineStatus? _recoveryStatus;
 
   @override
   void initState() {
@@ -124,7 +125,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // use inherits the totals already associated with this device.
   Future<void> _saveProfile() async {
     if (_deviceId == null) return;
-    setState(() => _profileStatus = 'Saving...');
+    setState(() => _profileStatus = const InlineStatus.busy('Saving...'));
     try {
       final profile = await ApiClient().createOrUpdateProfile(
         deviceId: _deviceId!,
@@ -138,17 +139,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       setState(() {
         _applyProfile(profile);
-        _profileStatus = 'Profile saved.';
+        _profileStatus = const InlineStatus.success('Profile saved.');
       });
     } catch (e) {
-      setState(() => _profileStatus = 'Could not save profile: $e');
+      if (!mounted) return;
+      setState(() => _profileStatus =
+          InlineStatus.error('Could not save profile. ${friendlyError(e)}.'));
     }
   }
 
   // FR-15: only ever shown for a device with an active profile.
   Future<void> _saveNotificationPrefs() async {
     if (_deviceId == null) return;
-    setState(() => _notifStatus = 'Saving...');
+    setState(() => _notifStatus = const InlineStatus.busy('Saving...'));
     try {
       await ApiClient().updateNotificationPrefs(
         deviceId: _deviceId!,
@@ -156,30 +159,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
         retroactiveUpdates: _retroactiveUpdates,
       );
       await _cacheNotificationPrefs();
-      setState(() => _notifStatus = 'Preferences saved.');
+      if (!mounted) return;
+      setState(() =>
+          _notifStatus = const InlineStatus.success('Preferences saved.'));
     } catch (e) {
-      setState(() => _notifStatus = 'Could not save preferences: $e');
+      if (!mounted) return;
+      setState(() => _notifStatus = InlineStatus.error(
+          'Could not save preferences. ${friendlyError(e)}.'));
     }
   }
 
   // FR-16: request the emailed code, then verify it re-links this device.
   Future<void> _sendRecoveryCode() async {
     if (_recoveryEmail.text.trim().isEmpty) return;
-    setState(() => _recoveryStatus = 'Sending code...');
+    setState(() =>
+        _recoveryStatus = const InlineStatus.busy('Sending code...'));
     try {
       await ApiClient().requestRecoveryCode(_recoveryEmail.text.trim());
       setState(() {
         _recoveryCodeSent = true;
-        _recoveryStatus = 'Code sent — check that inbox for a 6-digit code.';
+        _recoveryStatus = const InlineStatus.success(
+            'Code sent — check that inbox for a 6-digit code.');
       });
     } catch (e) {
-      setState(() => _recoveryStatus = 'Could not send code: $e');
+      if (!mounted) return;
+      setState(() => _recoveryStatus =
+          InlineStatus.error('Could not send code. ${friendlyError(e)}.'));
     }
   }
 
   Future<void> _verifyRecoveryCode() async {
     if (_deviceId == null) return;
-    setState(() => _recoveryStatus = 'Verifying...');
+    setState(() => _recoveryStatus = const InlineStatus.busy('Verifying...'));
     try {
       final profile = await ApiClient().verifyRecoveryCode(
         email: _recoveryEmail.text.trim(),
@@ -188,10 +199,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
       setState(() {
         _applyProfile(profile);
-        _recoveryStatus = 'Profile restored to this device.';
+        _recoveryStatus =
+            const InlineStatus.success('Profile restored to this device.');
       });
     } catch (e) {
-      setState(() => _recoveryStatus = 'Invalid or expired code.');
+      if (!mounted) return;
+      // 400 detail is "Invalid or expired code"; network errors say so.
+      setState(() =>
+          _recoveryStatus = InlineStatus.error('${friendlyError(e)}.'));
     }
   }
 
@@ -207,7 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (!mounted) return;
       setState(() {
         _connected = true;
-        _status = 'Connected — model ${h['model_version'] ?? '?'} · '
+        _status = 'Connected - model ${h['model_version'] ?? '?'} · '
             'threat database ${db == true ? 'online' : db == false ? 'offline' : 'n/a'}';
       });
     } catch (_) {
@@ -398,10 +413,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 12),
           FilledButton(
-              onPressed: _saveProfile,
+              onPressed: _profileStatus?.isBusy == true ? null : _saveProfile,
               child: Text(_hasProfile ? 'Update profile' : 'Create profile')),
           const SizedBox(height: 12),
-          Text(_profileStatus),
+          InlineStatusLine(_profileStatus),
           if (_hasProfile) ...[
             const Divider(height: 40),
             Text('Notification preferences',
@@ -409,6 +424,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               initialValue: _alertThreshold,
+              // M3 default is titleMedium (w500); match the TextFields.
+              style: Theme.of(context).textTheme.bodyLarge,
               decoration: const InputDecoration(
                   labelText: 'Alert me at or above',
                   border: OutlineInputBorder()),
@@ -430,10 +447,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton(
-                onPressed: _saveNotificationPrefs,
+                onPressed: _notifStatus?.isBusy == true
+                    ? null
+                    : _saveNotificationPrefs,
                 child: const Text('Save preferences')),
             const SizedBox(height: 12),
-            Text(_notifStatus),
+            InlineStatusLine(_notifStatus),
           ] else ...[
             const Divider(height: 40),
             Text('Recover a profile',
@@ -452,7 +471,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
             const SizedBox(height: 12),
             FilledButton(
-                onPressed: _sendRecoveryCode,
+                onPressed: _recoveryStatus?.isBusy == true
+                    ? null
+                    : _sendRecoveryCode,
                 child: const Text('Send recovery code')),
             if (_recoveryCodeSent) ...[
               const SizedBox(height: 12),
@@ -464,11 +485,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 12),
               FilledButton(
-                  onPressed: _verifyRecoveryCode,
+                  onPressed: _recoveryStatus?.isBusy == true
+                      ? null
+                      : _verifyRecoveryCode,
                   child: const Text('Verify and restore')),
             ],
             const SizedBox(height: 12),
-            Text(_recoveryStatus),
+            InlineStatusLine(_recoveryStatus),
           ],
         ],
       ],
